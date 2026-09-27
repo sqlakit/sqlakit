@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.22.2
+
+### Added
+
+- The documentation covers the editors: the
+  [VS Code extension](https://marketplace.visualstudio.com/items?itemName=sqlakit.sqlakit),
+  `sqlakit-lsp`, the language server it runs, and how to run that server in
+  PyCharm through LSP4IJ or in any other editor. See
+  [editor support](https://sqlakit.readthedocs.io/en/stable/sql/#editor-support).
+
 ## 0.22.1
 
 ### Changed
