@@ -771,19 +771,33 @@ The server reads the project's Python and never runs it, except for this
 action. When the template calls a macro written in Python, it renders again
 with `.venv/bin/python`, which imports the macros.
 
-### Other editors
+### PyCharm
 
-Install the server into the project's environment:
+PyCharm runs the server through the
+[LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) plugin. Install
+the server into the project's environment:
 
 ```console
 $ pip install sqlakit-lsp
 ```
 
-Then register `sqlakit-lsp` for `.sql` and `.py` files. It talks over stdio.
-The [`sqlakit-lsp` README](https://github.com/sqlakit/sqlakit-lsp) shows the
-setting for Neovim.
+Then, with LSP4IJ installed:
 
-### PyCharm and DataGrip
+1. **Settings > Languages & Frameworks > Language Servers > +**.
+2. **Server**: name it `sqlakit`, and give the command as the path of
+   `.venv/bin/sqlakit-lsp` in the project.
+3. **Mappings > File type**: add `SQL` and `Python`.
+
+The same completion, problems, hover, go to definition and render actions
+work there as in VS Code.
+
+### Other editors
+
+Install the server as for PyCharm, then register `sqlakit-lsp` for `.sql` and
+`.py` files. It talks over stdio. The [`sqlakit-lsp`
+README](https://github.com/sqlakit/sqlakit-lsp) shows the setting for Neovim.
+
+### Macros in PyCharm's SQL checks
 
 PyCharm and DataGrip check SQL against a database schema, so every `tpl.`
 call reads as an unknown function there. `sqlakit export pycharm` writes a
