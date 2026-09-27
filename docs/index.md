@@ -102,6 +102,13 @@ shows the source file of each query right away.
 that can't work, before the query runs. See [template
 validation](sql.md#template-validation).
 
+The [VS Code
+extension](https://marketplace.visualstudio.com/items?itemName=sqlakit.sqlakit)
+completes the macros, links a template name in Python to its file, marks the
+same problems as you type, and shows a template rendered as the database gets
+it. It runs `sqlakit-lsp`, a language server any other editor can run too. See
+[editor support](sql.md#editor-support).
+
 ### String templates
 
 ```python

@@ -723,6 +723,82 @@ line and the editor read this table, the application doesn't.
 
 ## Editor support
 
+`sqlakit-lsp` is a language server for templates. The
+[VS Code extension](https://marketplace.visualstudio.com/items?itemName=sqlakit.sqlakit)
+runs it, and any editor that speaks the Language Server Protocol can run it
+too.
+
+### VS Code
+
+Install **SQLAKit** from the Marketplace, or from the command line:
+
+```console
+$ code --install-extension sqlakit.sqlakit
+```
+
+The extension starts only in a project that depends on `sqlakit`. It runs
+`.venv/bin/sqlakit-lsp` when the project has one, `sqlakit-lsp` from the
+`PATH` otherwise, and `uvx sqlakit-lsp` when neither is there. There is
+nothing to install besides the extension when you have `uv`.
+
+In Python, the template name in `db.sql("...")` is a link to its file, and
+completes as you type it. A value the template doesn't read is marked.
+
+![A template name in Python, as a link](assets/vscode-link.png)
+
+In a template, `tpl.` completes the project's macros and the built-in ones,
+with the arguments each takes:
+
+![Macros completed after tpl.](assets/vscode-completion.png)
+
+The problems `sqlakit check` finds are marked as you type. Hovering over a
+call shows the SQL it writes, and hovering over a `:parameter` shows the calls
+of Python that pass it and what they pass. Go to definition works on a macro,
+an included template and a `:parameter`, which opens the keyword that passes
+it, `page_size=` in `db.sql("users/search.sql", page_size=limit)`.
+
+Two actions show the whole template as the database gets it, with `:name`
+placeholders or with `?`:
+
+![The two render actions](assets/vscode-actions.png)
+
+Every macro renders, the project's Python ones too, and the optional parts are
+all there:
+
+![A template rendered with ?](assets/vscode-rendered.png)
+
+The server reads the project's Python and never runs it, except for this
+action. When the template calls a macro written in Python, it renders again
+with `.venv/bin/python`, which imports the macros.
+
+### PyCharm
+
+PyCharm runs the server through the
+[LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) plugin. Install
+the server into the project's environment:
+
+```console
+$ pip install sqlakit-lsp
+```
+
+Then, with LSP4IJ installed:
+
+1. **Settings > Languages & Frameworks > Language Servers > +**.
+2. **Server**: name it `sqlakit`, and give the command as the path of
+   `.venv/bin/sqlakit-lsp` in the project.
+3. **Mappings > File type**: add `SQL` and `Python`.
+
+The same completion, problems, hover, go to definition and render actions
+work there as in VS Code.
+
+### Other editors
+
+Install the server as for PyCharm, then register `sqlakit-lsp` for `.sql` and
+`.py` files. It talks over stdio. The [`sqlakit-lsp`
+README](https://github.com/sqlakit/sqlakit-lsp) shows the setting for Neovim.
+
+### Macros in PyCharm's SQL checks
+
 PyCharm and DataGrip check SQL against a database schema, so every `tpl.`
 call reads as an unknown function there. `sqlakit export pycharm` writes a
 schema that declares them:
