@@ -673,13 +673,16 @@ macros, and has the linter read the result:
 
 ```console
 $ sqlakit check --lint sqruff
-app/sql/users/owned.sql:6:7: tpl.owned_by writes SQL sqruff cannot parse, with every parameter given: (u.team_id IN :teams OR u.id IN :users)
+app/sql/users/owned.sql:6:7: tpl.owned_by writes SQL sqruff cannot parse, with every parameter given
+    WHERE (u.team_id IN :teams OR u.id IN :users)
+                     ^
 14 templates, 1 problem
 ```
 
 Each template renders twice, with every parameter given a made-up value and
 with none given, as a macro decides what it writes by what it gets. Only what
-the linter cannot parse is a problem, and it's put on the call that wrote it.
+the linter cannot parse is a problem, and it's put on the call that wrote it,
+with the rendered line under it and a `^` where the linter stopped.
 The layout of a macro's SQL is not checked. `--lint sqlfluff` does the same
 with `sqlfluff`, and both need the settings `sqlakit export` writes.
 

@@ -278,23 +278,20 @@ def _place(
     starts = [0, *(index + 1 for index, char in enumerate(one.sql) if char == "\n")]
     for line, column in places:
         offset = starts[min(line, len(starts)) - 1] + column - 1
-        text = one.sql[starts[line - 1] :].split("\n", 1)[0].strip()
+        written = one.sql[starts[line - 1] :].split("\n", 1)[0]
+        text = written.strip()
+        # The line the linter stopped on, and a caret under where it stopped.
+        indent = len(written) - len(written.lstrip())
+        shown = f"\n    {text}\n    {' ' * max(column - 1 - indent, 0)}^"
         piece = one.written_by(offset)
         if piece is not None:
-            what = " ".join(one.sql[piece.start : piece.end].split())
-            message = (
-                f"{piece.call} writes SQL {linter.name} cannot parse, {{}}: {what}"
-            )
+            message = f"{piece.call} writes SQL {linter.name} cannot parse, {{}}{shown}"
             key = (path, *piece.span, message)
         else:
             at = source.find(text) if text else -1
             start = max(at, 0)
-            key = (
-                path,
-                start,
-                start + len(text),
-                f"{linter.name} cannot parse the rendered SQL, {{}}: {text}",
-            )
+            message = f"{linter.name} cannot parse the rendered SQL, {{}}{shown}"
+            key = (path, start, start + len(text), message)
         ways = found.setdefault(key, [])
         if _WAYS[one.variant] not in ways:
             ways.append(_WAYS[one.variant])
