@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `tpl.order_by` with nothing to sort by, and `ctx.no_order`, wrote
+  `(SELECT NULL)` on every database, and Snowflake refuses a subquery after
+  `ORDER BY`. They write `NULL` now, and `(SELECT NULL)` on PostgreSQL and
+  SQL Server, which refuse a bare `NULL` there.
+
 ## 0.22.6
 
 ### Added
