@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from . import _sql_formatter
 from ._linters import LINTERS, settings, stale
 from ._project import Problem, Project, load_project
 from ._pycharm import DIALECTS, ddl, dialects
@@ -55,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     export = commands.add_parser(
         "export", help="write what another tool needs to read the templates"
     )
-    export.add_argument("tool", choices=(*LINTERS, "pycharm"))
+    export.add_argument("tool", choices=(*LINTERS, "sql-formatter", "pycharm"))
     export.add_argument(
         "--project",
         default=".",
@@ -74,6 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command == "check":
         return _check(Path(arguments.project), json_output=arguments.format == "json")
     if arguments.command == "export":
+        if arguments.tool == "sql-formatter":
+            return _export_sql_formatter(
+                Path(arguments.project),
+                dialect=arguments.dialect,
+                check=arguments.check,
+            )
         if arguments.tool == "pycharm":
             return _export_pycharm(
                 Path(arguments.project),
@@ -196,6 +203,28 @@ def _export_linter(
         return 2
     pyproject.write_text(written, encoding="utf-8")
     _say(f"wrote {_relative(pyproject)}")
+    return 0
+
+
+def _export_sql_formatter(directory: Path, *, dialect: str | None, check: bool) -> int:
+    """Write the `.sql-formatter.json` that reads `:name` as a parameter."""
+    project = _load(directory)
+    if project is None:
+        return 2
+    path = project.root / _sql_formatter.FILE
+    written = path.read_text(encoding="utf-8") if path.exists() else None
+    if check:
+        if _sql_formatter.stale(written):
+            _say(f"{_relative(path)} out of date: run `sqlakit export sql-formatter`")
+            return 1
+        return 0
+    try:
+        text = _sql_formatter.config(project, written, dialect)
+    except ProjectConfigError as error:
+        _say(str(error))
+        return 2
+    path.write_text(text, encoding="utf-8")
+    _say(f"wrote {_relative(path)}")
     return 0
 
 
