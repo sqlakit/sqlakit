@@ -583,15 +583,19 @@ def test_check_lints_the_sql_the_macros_render(
     assert main(["check", "--lint", "sqruff"]) == 1
 
     lines = capsys.readouterr().out.splitlines()
-    assert lines[-3:] == [
+    assert lines[-7:] == [
         (
             "sql/bare.sql:3:7: tpl.bare writes SQL sqruff cannot parse, with every "
-            "parameter given and with none given: id IN :ids"
+            "parameter given and with none given"
         ),
+        "    WHERE id IN :ids",
+        "             ^",
         (
             "sql/half.sql:1:28: tpl.half writes SQL sqruff cannot parse, with every "
-            "parameter given: name = ("
+            "parameter given"
         ),
+        "    SELECT id FROM users WHERE name = (",
+        "                                      ^",
         "3 templates, 2 problems",
     ]
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- A problem `sqlakit check --lint` finds shows the rendered line the linter
+  stopped on, with a `^` under the place, in place of the SQL the call wrote.
+
 ## 0.22.4
 
 ### Added
