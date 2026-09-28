@@ -1,6 +1,6 @@
 [project]
 name = "sqlakit"
-version = "0.22.4"
+version = "0.22.5"
 description = "A toolkit for SQLAlchemy applications."
 readme = "README.md"
 license = "MIT"
