@@ -13,6 +13,8 @@
   `sql-formatter` that `:name` is a parameter, with the language of the
   project's dialect. Without it, `sql-formatter` splits `c = :limit::int` on
   PostgreSQL into `c =: limit ::int`. The other settings of the file stay.
+- The documentation covers `pgFormatter`, which formats a template with no
+  settings.
 
 ## 0.22.2
 
