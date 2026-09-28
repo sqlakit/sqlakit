@@ -526,6 +526,79 @@ def test_sqlfluff_reads_a_template_with_what_export_wrote(project: Path) -> None
     assert not {code for code in codes if code.startswith("RF")}, codes
 
 
+def test_export_writes_what_sql_formatter_needs(project: Path) -> None:
+    assert main(["export", "sql-formatter", "--check"]) == 1
+    # The project names no dialect, so the language is plain SQL.
+    assert main(["export", "sql-formatter"]) == 0
+    assert main(["export", "sql-formatter", "--check"]) == 0
+    assert json.loads((project / ".sql-formatter.json").read_text()) == {
+        "language": "sql",
+        "paramTypes": {"named": [":"]},
+    }
+    (project / ".sql-formatter.json").unlink()
+    assert main(["export", "sql-formatter", "--dialect", "oracle"]) == 0
+    assert json.loads((project / ".sql-formatter.json").read_text())["language"] == (
+        "plsql"
+    )
+
+
+def test_export_keeps_the_sql_formatter_settings_that_are_yours(
+    project: Path,
+) -> None:
+    (project / ".sql-formatter.json").write_text(
+        '{"language": "postgresql", "keywordCase": "upper",'
+        ' "paramTypes": {"named": ["@"], "positional": true}}'
+    )
+    assert main(["export", "sql-formatter", "--check"]) == 1
+    assert main(["export", "sql-formatter", "--dialect", "sqlite"]) == 0
+    assert json.loads((project / ".sql-formatter.json").read_text()) == {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "paramTypes": {"named": ["@", ":"], "positional": True},
+    }
+    (project / ".sql-formatter.json").write_text("{not json")
+    assert main(["export", "sql-formatter"]) == 2
+    assert main(["export", "sql-formatter", "--check"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("npx") is None, reason="npx is not installed")
+def test_sql_formatter_keeps_a_template_whole_with_what_export_wrote(
+    project: Path,
+) -> None:
+    source = (
+        "select u.id from users as u where tpl.if_set(:q, u.name = :q) and u.team ="
+        " :team.id and u.age > :limit::int order by tpl.order_by(:sort, id, name)"
+        " limit :page_size\n"
+    )
+    (project / "sql" / "formatted.sql").write_text(source)
+    assert main(["export", "sql-formatter", "--dialect", "postgresql"]) == 0
+    npx = shutil.which("npx")
+    assert npx is not None
+    ran = subprocess.run(  # noqa: S603 - the formatter, run the way its README says
+        [npx, "-y", "sql-formatter@15", "sql/formatted.sql"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    loaded = load_project(project)
+    before = loaded.load("formatted.sql", source)
+    after = loaded.load("formatted.sql", ran.stdout)
+    assert (
+        after.parameters()
+        == before.parameters()
+        == {
+            "q",
+            "team",
+            "limit",
+            "sort",
+            "page_size",
+        }
+    )
+    assert ":limit::int" in ran.stdout
+    assert "tpl.if_set" in ran.stdout
+
+
 def test_check_passes_a_file_of_macros_among_the_templates(
     app: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

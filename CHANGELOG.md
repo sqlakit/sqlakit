@@ -9,6 +9,10 @@
   `sqruff`: the `placeholder` templater, the same five rules turned off, and a
   value for each parameter named like a word the dialect keeps, asked of the
   installed `sqlfluff`. `--check` fails when they are out of date.
+- `sqlakit export sql-formatter` writes `.sql-formatter.json`, which tells
+  `sql-formatter` that `:name` is a parameter, with the language of the
+  project's dialect. Without it, `sql-formatter` splits `c = :limit::int` on
+  PostgreSQL into `c =: limit ::int`. The other settings of the file stay.
 
 ## 0.22.2
 

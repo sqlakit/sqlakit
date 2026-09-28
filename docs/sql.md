@@ -665,6 +665,24 @@ macro is an expression, so a template stays SQL to it, and `fix` formats it.
 Write an optional `JOIN` as a condition: `EXISTS (...)`, or `LEFT JOIN tags
 AS t ON t.order_id = o.id AND tpl.if_set(:tag, TRUE, FALSE)`.
 
+### sql-formatter
+
+`sql-formatter` formats SQL and doesn't lint it. It reads `:name` as a
+parameter only when its settings say so. Without that, `c = :limit::int` on
+PostgreSQL comes back as `c =: limit ::int`, which is no longer the template.
+`sqlakit export sql-formatter` writes `.sql-formatter.json` in the project's
+root, which `sql-formatter` finds from any directory below it:
+
+```console
+$ sqlakit export sql-formatter --dialect postgresql
+wrote .sql-formatter.json
+$ npx sql-formatter --fix app/sql/users/search.sql
+```
+
+It adds `:` to the named parameters, and writes the language when the file
+has none. `keywordCase` and every other setting you add stay as they are, and
+`--check` fails when the file doesn't read `:name`.
+
 ## Template validation
 
 Call `check()` at startup, next to the rest of your wiring:
