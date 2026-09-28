@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.7
 
 ### Fixed
 
@@ -8,6 +8,8 @@
   `(SELECT NULL)` on every database, and Snowflake refuses a subquery after
   `ORDER BY`. They write `NULL` now, and `(SELECT NULL)` on PostgreSQL and
   SQL Server, which refuse a bare `NULL` there.
+  A test that compares the whole SQL of such a query on MySQL, SQLite or
+  Oracle sees `ORDER BY NULL` in place of `ORDER BY (SELECT NULL)`.
 
 ## 0.22.6
 
