@@ -526,6 +526,115 @@ def test_sqlfluff_reads_a_template_with_what_export_wrote(project: Path) -> None
     assert not {code for code in codes if code.startswith("RF")}, codes
 
 
+LINTED_MACROS = '''
+from sqlakit.sql import Param, Sql, sql_macro
+
+
+@sql_macro
+def known(column: Sql) -> str:
+    """Rows where the column is set."""
+    return f"{column} IS NOT NULL"
+
+
+@sql_macro
+def bare(ids: Param) -> str:
+    """Rows of the ids, written without the brackets `IN` takes."""
+    return f"id IN {ids}"
+
+
+@sql_macro
+def half(q: Param) -> str:
+    """Rows of the text, broken when it is given."""
+    return "name = (" if q.value else "TRUE"
+'''
+
+
+@pytest.fixture
+def linted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A project on PostgreSQL whose Python macros write SQL, broken or not."""
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT)
+    (tmp_path / "db.py").write_text(
+        DB.replace('os.environ["DATABASE_URL"]', '"postgresql://x/y"').replace(
+            'macros=[HERE / "_macros.sql"]', 'macros=["linted_macros"]'
+        )
+    )
+    (tmp_path / "linted_macros.py").write_text(LINTED_MACROS)
+    (tmp_path / "sql").mkdir()
+    (tmp_path / "sql" / "known.sql").write_text(
+        "SELECT id FROM users WHERE tpl.known(name)\n"
+    )
+    (tmp_path / "sql" / "bare.sql").write_text(
+        "SELECT name\nFROM users\nWHERE tpl.bare(:ids)\n"
+    )
+    (tmp_path / "sql" / "half.sql").write_text(
+        "SELECT id FROM users WHERE tpl.half(:q)\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(sys.modules, "linted_macros", raising=False)
+    return tmp_path
+
+
+def test_check_lints_the_sql_the_macros_render(
+    linted: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["export", "sqruff"]) == 0
+    capsys.readouterr()
+
+    assert main(["check", "--lint", "sqruff"]) == 1
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[-3:] == [
+        (
+            "sql/bare.sql:3:7: tpl.bare writes SQL sqruff cannot parse, with every "
+            "parameter given and with none given: id IN :ids"
+        ),
+        (
+            "sql/half.sql:1:28: tpl.half writes SQL sqruff cannot parse, with every "
+            "parameter given: name = ("
+        ),
+        "3 templates, 2 problems",
+    ]
+
+
+def test_check_lints_with_sqlfluff_too(linted: Path) -> None:
+    assert main(["export", "sqlfluff"]) == 0
+
+    assert main(["check", "--lint", "sqlfluff", "--format", "json"]) == 1
+
+
+def test_check_says_what_it_needs_to_lint(
+    linted: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["check", "--lint", "sqruff"]) == 2
+    assert capsys.readouterr().out.strip() == (
+        "the `sqruff` settings do not read the templates: run "
+        "`sqlakit export sqruff` first"
+    )
+    assert main(["export", "sqruff"]) == 0
+    capsys.readouterr()
+    assert main(["check", "--lint", "sqruff", "--dialect", "sqlite"]) == 2
+    assert capsys.readouterr().out.strip() == (
+        "the templates render on sqlite, and `sqruff` reads postgresql: pass "
+        "--dialect postgresql, or set the dialect in `[tool.sqruff.core]`"
+    )
+
+
+def test_render_writes_each_template_both_ways(
+    linted: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["render", "--out", "rendered"]) == 0
+
+    assert capsys.readouterr().out.strip() == "wrote 6 files to rendered"
+    assert (linted / "rendered" / "half.given.sql").read_text() == (
+        "-- half.sql on postgresql, every parameter given\n"
+        "SELECT id FROM users WHERE name = (\n"
+    )
+    assert (linted / "rendered" / "half.not_given.sql").read_text() == (
+        "-- half.sql on postgresql, no parameter given\n"
+        "SELECT id FROM users WHERE TRUE\n"
+    )
+
+
 def test_export_writes_what_sql_formatter_needs(project: Path) -> None:
     assert main(["export", "sql-formatter", "--check"]) == 1
     # The project names no dialect, so the language is plain SQL.

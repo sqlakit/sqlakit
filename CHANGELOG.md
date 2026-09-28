@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `sqlakit check --lint sqruff` or `--lint sqlfluff` renders every template,
+  running the project's Python macros, and fails where the linter cannot
+  parse what they wrote. The problem is put on the call that wrote the SQL:
+  `users/owned.sql:6:7: tpl.owned_by writes SQL sqruff cannot parse`. Each
+  template renders with every parameter given and with none, on the dialect
+  the database URL names, or `--dialect`.
+- `sqlakit render --out DIRECTORY` writes the rendered SQL of every template
+  into files, both ways.
+
 ## 0.22.3
 
 ### Added

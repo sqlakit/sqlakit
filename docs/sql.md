@@ -665,6 +665,32 @@ macro is an expression, so a template stays SQL to it, and `fix` formats it.
 Write an optional `JOIN` as a condition: `EXISTS (...)`, or `LEFT JOIN tags
 AS t ON t.order_id = o.id AND tpl.if_set(:tag, TRUE, FALSE)`.
 
+### What the macros write
+
+A linter reads a macro's call, and never the SQL a macro written in Python
+returns. `sqlakit check --lint` renders every template, runs the project's
+macros, and has the linter read the result:
+
+```console
+$ sqlakit check --lint sqruff
+app/sql/users/owned.sql:6:7: tpl.owned_by writes SQL sqruff cannot parse, with every parameter given: (u.team_id IN :teams OR u.id IN :users)
+14 templates, 1 problem
+```
+
+Each template renders twice, with every parameter given a made-up value and
+with none given, as a macro decides what it writes by what it gets. Only what
+the linter cannot parse is a problem, and it's put on the call that wrote it.
+The layout of a macro's SQL is not checked. `--lint sqlfluff` does the same
+with `sqlfluff`, and both need the settings `sqlakit export` writes.
+
+The templates render on the dialect the database URL in the code names, since
+a macro writes by `ctx.dialect`. Pass `--dialect` when the code names none, or
+to check another database the templates run on. The linter has to read the
+same dialect, or the check stops and says so.
+
+`sqlakit render --out build/sql` writes the rendered SQL into files instead,
+two for each template, to read or to give another tool.
+
 ### sql-formatter
 
 `sql-formatter` formats SQL and doesn't lint it. It reads `:name` as a

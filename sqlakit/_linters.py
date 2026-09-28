@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from ._project import Project
 
-__all__ = ["LINTERS", "Linter", "settings", "stale"]
+__all__ = ["LINTERS", "Linter", "dialect_of", "parse_errors", "settings", "stale"]
 
 _NEXT_TABLE = re.compile(r"^\[", re.MULTILINE)
 
@@ -47,6 +47,9 @@ class Linter:
     kept: Callable[[str, list[str], str | None], set[int]]
     """Given the executable, the names and the dialect, the index of each name it
     cannot read as a column."""
+    unparsed: Callable[[str, Path, Path], dict[Path, list[tuple[int, int]]]]
+    """Given the executable, a directory of SQL and the project's root, where in
+    each file it could not parse: the line and the column, from one."""
 
     @property
     def placeholder(self) -> str:
@@ -128,6 +131,118 @@ def settings(
         )
         raise ProjectConfigError(problem) from error
     return written_out
+
+
+def dialect_of(linter: Linter, pyproject: str) -> str | None:
+    """Return the dialect the linter's settings read in, by SQLAlchemy's name."""
+    tables = tomllib.loads(pyproject).get("tool", {}).get(linter.name, {})
+    written = tables.get("core", {}).get("dialect")
+    if not isinstance(written, str):
+        return None
+    named = {theirs: ours for ours, theirs in linter.dialects.items()}
+    return named.get(written, written)
+
+
+def parse_errors(
+    linter: Linter, folder: Path, root: Path
+) -> dict[Path, list[tuple[int, int]]]:
+    """Return where the linter could not parse each file of a directory.
+
+    It runs in the project's root, so it reads the project's settings, and an
+    empty result says the linter is not installed.
+    """
+    binary = shutil.which(linter.name)
+    if binary is None:
+        return {}
+    return linter.unparsed(binary, folder, root)
+
+
+_CHEAP_RULE = "LT12"
+"""The one rule a run for parse errors keeps: it reads only a file's end, and a
+linter parses the whole file whatever rules it runs."""
+
+
+def _sqruff_unparsed(
+    binary: str, folder: Path, root: Path
+) -> dict[Path, list[tuple[int, int]]]:
+    pyproject = root / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8") if pyproject.exists() else ""
+    tables = tomllib.loads(text).get("tool", {}).get("sqruff", {})
+    core = tables.get("core", {})
+    placeholder = tables.get("templater", {}).get("placeholder", {})
+    # The project's reading of the templates, and none of its rules: sqruff
+    # takes no rules on its command line, so a file of settings of its own.
+    settings = [
+        "[sqruff]",
+        *([f"dialect = {core['dialect']}"] if "dialect" in core else []),
+        f"templater = {core.get('templater', 'placeholder')}",
+        f"rules = {_CHEAP_RULE}",
+        "",
+        "[sqruff:templater:placeholder]",
+        *(f"{name} = {value}" for name, value in placeholder.items()),
+    ]
+    with tempfile.TemporaryDirectory() as scratch:
+        config = Path(scratch, ".sqruff")
+        config.write_text("\n".join(settings) + "\n", encoding="utf-8")
+        found = subprocess.run(  # noqa: S603 - sqruff, found on the PATH
+            [
+                binary,
+                "lint",
+                "--config",
+                str(config),
+                "--parsing-errors",
+                "--format",
+                "json",
+                str(folder),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=root,
+            check=False,
+        )
+    return {
+        Path(path).resolve(): [
+            (problem["range"]["start"]["line"], problem["range"]["start"]["character"])
+            for problem in problems
+            # A problem of parsing has no rule, and so no code.
+            if problem.get("code") is None
+        ]
+        for path, problems in _report(found.stdout, found.stderr, shape=dict).items()
+    }
+
+
+def _sqlfluff_unparsed(
+    binary: str, folder: Path, root: Path
+) -> dict[Path, list[tuple[int, int]]]:
+    found = subprocess.run(  # noqa: S603 - sqlfluff, found on the PATH
+        # A file outside the project reads no setting of it unless told where.
+        [
+            binary,
+            "lint",
+            "--config",
+            str(root / "pyproject.toml"),
+            # Only parse errors count: one cheap rule, run on every core.
+            "--rules",
+            _CHEAP_RULE,
+            "--processes",
+            "-1",
+            "--format",
+            "json",
+            str(folder),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=False,
+    )
+    return {
+        Path(report["filepath"]).resolve(): [
+            (problem["start_line_no"], problem["start_line_pos"])
+            for problem in report.get("violations", ())
+            if problem.get("code") == "PRS"
+        ]
+        for report in _report(found.stdout, found.stderr, shape=list)
+    }
 
 
 def _dialect(
@@ -242,6 +357,7 @@ SQRUFF = Linter(
     # sqruff reads settings without a dialect as ANSI.
     default_dialect=None,
     kept=_sqruff_kept,
+    unparsed=_sqruff_unparsed,
 )
 
 SQLFLUFF = Linter(
@@ -252,6 +368,7 @@ SQLFLUFF = Linter(
     # sqlfluff reads no template without a dialect.
     default_dialect="ansi",
     kept=_sqlfluff_kept,
+    unparsed=_sqlfluff_unparsed,
 )
 
 LINTERS = {linter.name: linter for linter in (SQRUFF, SQLFLUFF)}
