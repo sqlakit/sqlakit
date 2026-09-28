@@ -234,12 +234,18 @@ def unparsed(project: Project, linter: Linter, dialect: str) -> list[Problem]:
     """
     written = list(rendered(project, dialect))
     with tempfile.TemporaryDirectory() as folder:
-        files = {}
-        for index, one in enumerate(written):
-            if one.sql is not None:
-                file = Path(folder, f"{index}.sql").resolve()
+        # The two ways often write the same SQL, which is read once.
+        files: dict[Path, list[Rendered]] = {}
+        by_text: dict[tuple[str, str], Path] = {}
+        for one in written:
+            if one.sql is None:
+                continue
+            file = by_text.get((one.name, one.sql))
+            if file is None:
+                file = Path(folder, f"{len(by_text)}.sql").resolve()
                 file.write_text(one.sql, encoding="utf-8")
-                files[file] = one
+                by_text[one.name, one.sql] = file
+            files.setdefault(file, []).append(one)
         errors = parse_errors(linter, Path(folder).resolve(), project.root)
     found: dict[tuple[Path, int, int, str], list[str]] = {}
     for one in written:
@@ -249,38 +255,49 @@ def unparsed(project: Project, linter: Linter, dialect: str) -> list[Problem]:
         key = (path, 0, 0, f"cannot be rendered {{}}: {one.problem}")
         found.setdefault(key, []).append(_WAYS[one.variant])
     for file, places in errors.items():
-        one = files.get(file)
-        path = project.path_of(one.name) if one else None
-        if one is None or one.sql is None or path is None:
-            continue
-        source = path.read_text(encoding="utf-8")
-        starts = [0, *(index + 1 for index, char in enumerate(one.sql) if char == "\n")]
-        for line, column in places:
-            offset = starts[min(line, len(starts)) - 1] + column - 1
-            text = one.sql[starts[line - 1] :].split("\n", 1)[0].strip()
-            piece = one.written_by(offset)
-            if piece is not None:
-                what = " ".join(one.sql[piece.start : piece.end].split())
-                message = (
-                    f"{piece.call} writes SQL {linter.name} cannot parse, {{}}: {what}"
-                )
-                key = (path, *piece.span, message)
-            else:
-                at = source.find(text) if text else -1
-                start = max(at, 0)
-                key = (
-                    path,
-                    start,
-                    start + len(text),
-                    f"{linter.name} cannot parse the rendered SQL, {{}}: {text}",
-                )
-            ways = found.setdefault(key, [])
-            if _WAYS[one.variant] not in ways:
-                ways.append(_WAYS[one.variant])
+        for one in files.get(file, ()):
+            _place(project, linter, one, places, found)
     return [
         Problem(path, start, end, message.format(" and ".join(ways)))
         for (path, start, end, message), ways in found.items()
     ]
+
+
+def _place(
+    project: Project,
+    linter: Linter,
+    one: Rendered,
+    places: list[tuple[int, int]],
+    found: dict[tuple[Path, int, int, str], list[str]],
+) -> None:
+    """Put each place the linter could not parse on the call that wrote it."""
+    path = project.path_of(one.name)
+    if path is None or one.sql is None:
+        return
+    source = path.read_text(encoding="utf-8")
+    starts = [0, *(index + 1 for index, char in enumerate(one.sql) if char == "\n")]
+    for line, column in places:
+        offset = starts[min(line, len(starts)) - 1] + column - 1
+        text = one.sql[starts[line - 1] :].split("\n", 1)[0].strip()
+        piece = one.written_by(offset)
+        if piece is not None:
+            what = " ".join(one.sql[piece.start : piece.end].split())
+            message = (
+                f"{piece.call} writes SQL {linter.name} cannot parse, {{}}: {what}"
+            )
+            key = (path, *piece.span, message)
+        else:
+            at = source.find(text) if text else -1
+            start = max(at, 0)
+            key = (
+                path,
+                start,
+                start + len(text),
+                f"{linter.name} cannot parse the rendered SQL, {{}}: {text}",
+            )
+        ways = found.setdefault(key, [])
+        if _WAYS[one.variant] not in ways:
+            ways.append(_WAYS[one.variant])
 
 
 def _refused(

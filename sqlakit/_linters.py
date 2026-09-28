@@ -157,16 +157,49 @@ def parse_errors(
     return linter.unparsed(binary, folder, root)
 
 
+_CHEAP_RULE = "LT12"
+"""The one rule a run for parse errors keeps: it reads only a file's end, and a
+linter parses the whole file whatever rules it runs."""
+
+
 def _sqruff_unparsed(
     binary: str, folder: Path, root: Path
 ) -> dict[Path, list[tuple[int, int]]]:
-    found = subprocess.run(  # noqa: S603 - sqruff, found on the PATH
-        [binary, "lint", "--parsing-errors", "--format", "json", str(folder)],
-        capture_output=True,
-        text=True,
-        cwd=root,
-        check=False,
-    )
+    pyproject = root / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8") if pyproject.exists() else ""
+    tables = tomllib.loads(text).get("tool", {}).get("sqruff", {})
+    core = tables.get("core", {})
+    placeholder = tables.get("templater", {}).get("placeholder", {})
+    # The project's reading of the templates, and none of its rules: sqruff
+    # takes no rules on its command line, so a file of settings of its own.
+    settings = [
+        "[sqruff]",
+        *([f"dialect = {core['dialect']}"] if "dialect" in core else []),
+        f"templater = {core.get('templater', 'placeholder')}",
+        f"rules = {_CHEAP_RULE}",
+        "",
+        "[sqruff:templater:placeholder]",
+        *(f"{name} = {value}" for name, value in placeholder.items()),
+    ]
+    with tempfile.TemporaryDirectory() as scratch:
+        config = Path(scratch, ".sqruff")
+        config.write_text("\n".join(settings) + "\n", encoding="utf-8")
+        found = subprocess.run(  # noqa: S603 - sqruff, found on the PATH
+            [
+                binary,
+                "lint",
+                "--config",
+                str(config),
+                "--parsing-errors",
+                "--format",
+                "json",
+                str(folder),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=root,
+            check=False,
+        )
     return {
         Path(path).resolve(): [
             (problem["range"]["start"]["line"], problem["range"]["start"]["character"])
@@ -188,6 +221,11 @@ def _sqlfluff_unparsed(
             "lint",
             "--config",
             str(root / "pyproject.toml"),
+            # Only parse errors count: one cheap rule, run on every core.
+            "--rules",
+            _CHEAP_RULE,
+            "--processes",
+            "-1",
             "--format",
             "json",
             str(folder),
