@@ -683,6 +683,18 @@ It adds `:` to the named parameters, and writes the language when the file
 has none. `keywordCase` and every other setting you add stay as they are, and
 `--check` fails when the file doesn't read `:name`.
 
+### pgFormatter
+
+`pgFormatter` reads a template as it is, with no settings: `:name`, `:team.id`
+and `:limit::int` stay whole, and a `tpl.` call is a function call to it.
+
+```console
+$ pg_format -i -u 2 app/sql/users/search.sql
+```
+
+`-u 2` writes the keywords in upper case. It writes a space between a macro's
+name and its `(`, `tpl.if_set (:q, ...)`, which reads the same.
+
 ## Template validation
 
 Call `check()` at startup, next to the rest of your wiring:
