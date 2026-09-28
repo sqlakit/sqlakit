@@ -328,12 +328,15 @@ class Context:
         self.values: dict[str, Any] = dict(values)
         self._bound = 0
 
-    no_order = "(SELECT NULL)"
-    """An `ORDER BY` term that orders by nothing, for a macro with nothing to sort by.
+    @property
+    def no_order(self) -> str:
+        """An `ORDER BY` term that orders by nothing, for a macro with nothing to sort by.
 
-    Every database takes it after `ORDER BY`, and a direction after it: `NULL`
-    and `NULL DESC` are refused by PostgreSQL, and `0` is a column's position.
-    """
+        PostgreSQL and SQL Server refuse a bare `NULL` there, and take
+        `(SELECT NULL)`. Snowflake refuses a subquery there, and takes `NULL`,
+        as MySQL, SQLite and Oracle do. `0` would be a column's position.
+        """
+        return "(SELECT NULL)" if self.dialect in ("postgresql", "mssql") else "NULL"
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.dialect!r})"
@@ -2074,7 +2077,8 @@ def order_by(ctx: Context, sort: Param, column: Sql, *columns: Sql) -> str:
     the nulls of every term whose sort string does not say, and MySQL, which
     has no `NULLS LAST`, sorts by `IS NULL` first. Any other string is the sort
     when the call passes none, `'name.asc'` above. With neither, the rows come
-    in no order: `(SELECT NULL)`, since PostgreSQL refuses a bare `NULL`.
+    in no order: `NULL`, or `(SELECT NULL)` on PostgreSQL and SQL Server, which
+    refuse a bare `NULL`.
     """
     written = [one.strip() for one in (column, *columns)]
     options = [one.strip("'") for one in written if one.startswith("'")]

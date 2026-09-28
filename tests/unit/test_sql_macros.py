@@ -264,7 +264,7 @@ def test_the_layout_of_a_template_survives_rendering(db: Database) -> None:
         "        WHERE\n"
         "            team IN (__[POSTCOMPILE_teams])\n"
         "            AND TRUE\n"
-        "        ORDER BY (SELECT NULL)\n"
+        "        ORDER BY NULL\n"
         "        LIMIT :limit\n"
         "    "
     )
@@ -341,8 +341,6 @@ def test_a_dollar_quoted_string_is_text() -> None:
 
 
 def test_icontains_takes_the_collation_snowflake_compares_under() -> None:
-    from sqlalchemy.engine import default
-
     snowflake = default.DefaultDialect()
     snowflake.name = "snowflake"
     assert render("WHERE tpl.icontains(name, :q, 'en-ci-ai')", snowflake, q="é") == (
@@ -1276,6 +1274,26 @@ def test_a_path_through_none_reads_as_none() -> None:
     )
     assert template.render(ctx) == "WHERE c = :filters__team__value"
     assert ctx.values["filters__team__value"] is None
+
+
+@pytest.mark.parametrize(
+    ("name", "written"),
+    [
+        ("postgresql", "ORDER BY (SELECT NULL)"),
+        ("mssql", "ORDER BY (SELECT NULL)"),
+        ("snowflake", "ORDER BY NULL"),
+        ("mysql", "ORDER BY NULL"),
+        ("sqlite", "ORDER BY NULL"),
+        ("oracle", "ORDER BY NULL"),
+    ],
+)
+def test_order_by_orders_by_nothing_as_each_database_takes_it(
+    name: str, written: str
+) -> None:
+    dialect = default.DefaultDialect()
+    dialect.name = name
+
+    assert render("ORDER BY tpl.order_by(:sort, id)", dialect) == written
 
 
 def test_order_by_orders_by_nothing_when_the_sort_was_not_passed() -> None:

@@ -76,6 +76,13 @@ CASES = [
         {"sort": "score.desc.nulls_last"},
         [2, 1, 3],
     ),
+    # Nothing to sort by writes a term each database takes: `id` sorts after it.
+    Case(
+        "order_by",
+        "SELECT id FROM macro_items ORDER BY tpl.order_by(:sort, score), id",
+        {"sort": None},
+        [1, 2, 3],
+    ),
     Case(
         "order_by",
         "SELECT id FROM macro_items ORDER BY tpl.order_by(:sort, id, score)",
