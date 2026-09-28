@@ -2,6 +2,8 @@
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 import tomllib
 from collections.abc import Callable
@@ -404,9 +406,6 @@ def test_export_keeps_what_is_yours(project: Path) -> None:
 
 
 def test_sqruff_reads_a_template_with_what_export_wrote(project: Path) -> None:
-    import shutil
-    import subprocess
-
     assert main(["export", "sqruff", "--dialect", "postgres"]) == 0
     sqruff = shutil.which("sqruff")
     assert sqruff is not None
@@ -421,9 +420,6 @@ def test_sqruff_reads_a_template_with_what_export_wrote(project: Path) -> None:
 
 
 def test_every_rule_passes_a_macro_that_takes_a_table(project: Path) -> None:
-    import shutil
-    import subprocess
-
     # `tpl.for_team(u)` passes a table, which RF02 and RF03 read as a column.
     (project / "sql" / "team.sql").write_text(
         "SELECT\n    u.id,\n    u.name\nFROM users AS u\nWHERE tpl.for_team(u)\n"
@@ -448,9 +444,6 @@ def test_every_rule_passes_a_macro_that_takes_a_table(project: Path) -> None:
 def test_export_gives_a_value_to_a_word_the_dialect_keeps(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import shutil
-    import subprocess
-
     # SQLAlchemy keeps neither word, and sqruff's SQLite keeps both.
     (project / "sql" / "kept.sql").write_text(
         "SELECT * FROM t WHERE tpl.in_list(t.status, :statuses, :exclude)\n"
@@ -474,6 +467,63 @@ def test_export_gives_a_value_to_a_word_the_dialect_keeps(
     # Without sqruff, the words SQLAlchemy keeps decide, and the check agrees.
     monkeypatch.setattr(shutil, "which", lambda _: None)
     assert main(["export", "sqruff", "--check"]) == 0
+
+
+def test_export_writes_what_sqlfluff_needs_into_pyproject(project: Path) -> None:
+    (project / "sql" / "dotted.sql").write_text(
+        "SELECT * FROM users WHERE team = :c.team LIMIT :limit"
+    )
+    assert main(["export", "sqlfluff", "--check"]) == 1
+    assert main(["export", "sqlfluff", "--dialect", "postgresql"]) == 0
+    assert main(["export", "sqlfluff", "--check"]) == 0
+    written = (project / "pyproject.toml").read_text()
+    assert written == PYPROJECT + (
+        "\n"
+        "[tool.sqlfluff.core]\n"
+        'dialect = "postgres"\n'
+        'templater = "placeholder"\n'
+        'exclude_rules = "RF01,RF02,RF03,AL05,ST03"\n'
+        "\n"
+        "[tool.sqlfluff.templater.placeholder]\n"
+        'param_style = "colon"\n'
+        'limit = "1"\n'
+    )
+    # One linter's settings leave the other's alone.
+    assert main(["export", "sqruff"]) == 0
+    both = (project / "pyproject.toml").read_text()
+    assert both.startswith(written)
+    assert "[tool.sqruff.core]" in both
+    assert main(["export", "sqlfluff", "--check"]) == 0
+
+
+def test_sqlfluff_reads_a_template_with_what_export_wrote(project: Path) -> None:
+    # sqlfluff's SQLite keeps `exclude` and `row`, and `tpl.for_team(u)` passes
+    # a table, which RF02 and RF03 read as a column.
+    (project / "sql" / "kept.sql").write_text(
+        "SELECT u.id\nFROM users AS u\n"
+        "WHERE tpl.for_team(u) AND tpl.in_list(u.status, :statuses, :exclude)\n"
+        "    AND u.kind = :row.kind\n"
+    )
+    assert main(["export", "sqlfluff", "--dialect", "sqlite"]) == 0
+    written = (project / "pyproject.toml").read_text()
+    assert 'exclude = "1"\n' in written
+    assert 'row = "row_"\n' in written
+    sqlfluff = shutil.which("sqlfluff")
+    assert sqlfluff is not None
+    ran = subprocess.run(  # noqa: S603 - the linter the project installs
+        [sqlfluff, "lint", "--format", "json", "sql/kept.sql", "sql/good.sql"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    codes = {
+        problem["code"]
+        for found in json.loads(ran.stdout)
+        for problem in found["violations"]
+    }
+    assert "PRS" not in codes
+    assert not {code for code in codes if code.startswith("RF")}, codes
 
 
 def test_check_passes_a_file_of_macros_among_the_templates(

@@ -624,8 +624,9 @@ GROUP BY team
 A template is SQL, so `sqruff` or `sqlfluff` reads it with the `placeholder`
 templater, which writes each `:name` as `name`: `:status` reads as a column.
 A parameter named like a keyword doesn't, since `LIMIT :limit` reads
-`LIMIT limit`, and needs a value. `sqlakit export sqruff` writes the settings
-into `pyproject.toml`, with a value for each such parameter of your templates:
+`LIMIT limit`, and needs a value. `sqlakit export sqruff` or
+`sqlakit export sqlfluff` writes the settings into `pyproject.toml`, with a
+value for each such parameter of your templates:
 
 ```console
 $ sqlakit export sqruff --dialect snowflake
@@ -633,24 +634,35 @@ wrote pyproject.toml
 $ sqruff lint app/sql
 ```
 
-`export` asks the installed `sqruff` which words its dialect reserves, because
+```console
+$ sqlakit export sqlfluff --dialect snowflake
+wrote pyproject.toml
+$ sqlfluff lint app/sql
+```
+
+The two read a template the same way, and with the same rules `fix` writes the
+same SQL. `sqruff` is written in Rust and runs faster. `sqlfluff` is the one
+more projects already use.
+
+`export` asks the installed linter which words its dialect reserves, because
 they differ from SQLAlchemy's: `exclude` and `row` are reserved in SQLite. Run
 it again when a template gains a parameter named like a keyword.
-`sqlakit export sqruff --check` fails in CI when it's out of date. It writes
-`[tool.sqruff.core]` only when the table is missing, so the rules you set there
-stay yours.
+`sqlakit export sqruff --check` fails in CI when it's out of date, and so does
+`sqlakit export sqlfluff --check`. It writes `[tool.sqruff.core]` or
+`[tool.sqlfluff.core]` only when the table is missing, so the rules you set
+there stay yours.
 
-The exported settings turn on every rule `sqruff` has, `rules = "all"`, and
-turn off five that a `tpl.` call trips while the template is fine. `RF01`
-reads `tpl.if_set` as a column of a table named `tpl`. `RF02` and `RF03` read
-a table a macro takes, as in `tpl.paid(o)`, as a column. `AL05` and `ST03`
-miss an alias or a CTE used only inside a macro's argument. For fewer rules,
-set `rules = "core"` in `[tool.sqruff.core]`.
+The exported settings turn on every rule, `rules = "all"` for `sqruff`, which
+`sqlfluff` does unless told, and turn off five that a `tpl.` call trips while
+the template is fine. `RF01` reads `tpl.if_set` as a column of a table named
+`tpl`. `RF02` and `RF03` read a table a macro takes, as in `tpl.paid(o)`, as a
+column. `AL05` and `ST03` miss an alias or a CTE used only inside a macro's
+argument. For fewer rules, set `rules = "core"` in the core table.
 
 A linter reads a macro call where a value goes: in `WHERE`, in `SELECT`, after
 `ORDER BY`, and where a table goes in `FROM`. Every argument of a built-in
-macro is an expression, so a template stays SQL to it, and `sqruff fix` formats
-it. Write an optional `JOIN` as a condition: `EXISTS (...)`, or `LEFT JOIN tags
+macro is an expression, so a template stays SQL to it, and `fix` formats it.
+Write an optional `JOIN` as a condition: `EXISTS (...)`, or `LEFT JOIN tags
 AS t ON t.order_id = o.id AND tpl.if_set(:tag, TRUE, FALSE)`.
 
 ## Template validation
