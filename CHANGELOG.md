@@ -1,11 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.22.6
 
 ### Added
 
 - `tpl.if_not_set`, another name for `tpl.unless_set`, which reads as the
   other way round from `tpl.if_set`.
+  A project with a macro of its own named `if_not_set` now gets
+  `MacroDefinitionError`, as two macros share the name: drop yours, or give it
+  another name.
 
 ## 0.22.5
 
