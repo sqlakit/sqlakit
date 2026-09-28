@@ -8,10 +8,10 @@ import os
 import sys
 from pathlib import Path
 
+from ._linters import LINTERS, settings, stale
 from ._project import Problem, Project, load_project
 from ._pycharm import DIALECTS, ddl, dialects
 from ._sql import NAMESPACE, registered, signature_of
-from ._sqruff import settings, stale
 from .exceptions import MacroDefinitionError, ProjectConfigError, UnknownImportPathError
 
 
@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     export = commands.add_parser(
         "export", help="write what another tool needs to read the templates"
     )
-    export.add_argument("tool", choices=("sqruff", "pycharm"))
+    export.add_argument("tool", choices=(*LINTERS, "pycharm"))
     export.add_argument(
         "--project",
         default=".",
@@ -74,9 +74,17 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.command == "check":
         return _check(Path(arguments.project), json_output=arguments.format == "json")
     if arguments.command == "export":
-        export = _export_pycharm if arguments.tool == "pycharm" else _export_sqruff
-        return export(
-            Path(arguments.project), dialect=arguments.dialect, check=arguments.check
+        if arguments.tool == "pycharm":
+            return _export_pycharm(
+                Path(arguments.project),
+                dialect=arguments.dialect,
+                check=arguments.check,
+            )
+        return _export_linter(
+            arguments.tool,
+            Path(arguments.project),
+            dialect=arguments.dialect,
+            check=arguments.check,
         )
     if arguments.command == "macros":
         return _macros(
@@ -165,21 +173,24 @@ def _check(directory: Path, *, json_output: bool) -> int:
     return 1 if problems else 0
 
 
-def _export_sqruff(directory: Path, *, dialect: str | None, check: bool) -> int:
-    """Write the `sqruff` settings that read the templates into `pyproject.toml`."""
+def _export_linter(
+    name: str, directory: Path, *, dialect: str | None, check: bool
+) -> int:
+    """Write the settings of `sqruff` or `sqlfluff` that read the templates."""
+    linter = LINTERS[name]
     project = _load(directory)
     if project is None:
         return 2
     pyproject = project.root / "pyproject.toml"
     text = pyproject.read_text(encoding="utf-8") if pyproject.exists() else ""
     if check:
-        tables = stale(project, text)
+        tables = stale(linter, project, text)
         if tables:
-            _say(f"{', '.join(tables)} out of date: run `sqlakit export sqruff`")
+            _say(f"{', '.join(tables)} out of date: run `sqlakit export {name}`")
             return 1
         return 0
     try:
-        written = settings(project, text, dialect)
+        written = settings(linter, project, text, dialect)
     except ProjectConfigError as error:
         _say(str(error))
         return 2

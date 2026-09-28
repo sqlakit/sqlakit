@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `sqlakit export sqlfluff` writes the `sqlfluff` settings that read the
+  templates into `pyproject.toml`, as `sqlakit export sqruff` does for
+  `sqruff`: the `placeholder` templater, the same five rules turned off, and a
+  value for each parameter named like a word the dialect keeps, asked of the
+  installed `sqlfluff`. `--check` fails when they are out of date.
+
 ## 0.22.2
 
 ### Added
