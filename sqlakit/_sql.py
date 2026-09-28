@@ -1954,6 +1954,16 @@ def unless_set(value: Param, expr: Sql, otherwise: Sql = Sql("TRUE")) -> str:  #
     return _grouped(str(otherwise if _is_set(value.value) else expr))
 
 
+@sql_macro(optional=True, lazy=True)
+def if_not_set(value: Param, expr: Sql, otherwise: Sql = Sql("TRUE")) -> str:  # noqa: B008
+    """`expr` when the parameter holds no value: another name for `unless_set`.
+
+    It reads as the other way round from `if_set`:
+    `AND tpl.if_not_set(:status, status <> 'archived')`.
+    """
+    return _grouped(str(otherwise if _is_set(value.value) else expr))
+
+
 @sql_macro(optional=True)
 def array(ctx: Context, values: Param, type_name: Sql = Sql("")) -> str:  # noqa: B008
     """Write a list as an array, one parameter per value.
@@ -2564,6 +2574,7 @@ BUILTIN_MACROS: Mapping[str, Macro] = {
     for macro in (
         if_set,
         unless_set,
+        if_not_set,
         order_by,
         icontains,
         icollate,

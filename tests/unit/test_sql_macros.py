@@ -417,6 +417,7 @@ def test_signature_says_how_a_template_calls_a_macro() -> None:
     ] == [
         "tpl.if_set(:value, expr[, otherwise])",
         "tpl.unless_set(:value, expr[, otherwise])",
+        "tpl.if_not_set(:value, expr[, otherwise])",
         "tpl.order_by(:sort, column, *columns)",
         "tpl.icontains(column, text[, collation])",
         "tpl.icollate(column[, collation])",
@@ -615,6 +616,18 @@ def test_unless_set_applies_only_when_the_value_is_not_there(
 ) -> None:
     source = "WHERE tpl.unless_set(:status, status <> 'archived')"
     assert render(source, postgresql.dialect(), **values) == sql
+
+
+@pytest.mark.parametrize(
+    "values", [{}, {"status": None}, {"status": ""}, {"status": "archived"}]
+)
+def test_if_not_set_writes_what_unless_set_writes(values: dict[str, Any]) -> None:
+    unless = "WHERE tpl.unless_set(:status, status <> 'archived', FALSE)"
+    written = render(unless, postgresql.dialect(), **values)
+
+    if_not = unless.replace("unless_set", "if_not_set")
+
+    assert render(if_not, postgresql.dialect(), **values) == written
 
 
 def test_unless_set_takes_what_to_write_when_the_value_is_there() -> None:

@@ -381,7 +381,7 @@ docstrings. `sqlakit macros app.sql.macros` adds the macros of a module, and
 | macro | writes |
 | --- | --- |
 | `tpl.if_set(:x, expr[, otherwise])` | `expr` when `:x` holds a value, `otherwise` (`TRUE`) when it doesn't |
-| `tpl.unless_set(:x, expr[, otherwise])` | `expr` when `:x` holds no value |
+| `tpl.unless_set(:x, expr[, otherwise])` | `expr` when `:x` holds no value, also named `tpl.if_not_set` |
 | `tpl.in_list(col, :values, :exclude)` | `col IN (:values)`, or `NOT IN` when `:exclude` is set, and `TRUE` when the list is empty |
 | `tpl.between(col, :from, :to[, '[)'])` | a range whose ends may each be missing |
 | `tpl.order_by(:sort, col, ...)` | the terms of an `ORDER BY` from sort strings, only by the columns listed |

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `tpl.if_not_set`, another name for `tpl.unless_set`, which reads as the
+  other way round from `tpl.if_set`.
+
 ## 0.22.5
 
 ### Changed

@@ -65,6 +65,12 @@ CASES = [
         [1, 2, 3],
     ),
     Case(
+        "if_not_set",
+        "SELECT id FROM macro_items WHERE tpl.if_not_set(:every, score IS NOT NULL) ORDER BY id",
+        {"every": None},
+        [1, 2],
+    ),
+    Case(
         "order_by",
         "SELECT id FROM macro_items ORDER BY tpl.order_by(:sort, id, score)",
         {"sort": "score.desc.nulls_last"},
