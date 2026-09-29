@@ -76,6 +76,19 @@ CASES = [
         {"sort": "score.desc.nulls_last"},
         [2, 1, 3],
     ),
+    Case(
+        "any_of",
+        "SELECT id FROM macro_items"
+        " WHERE tpl.any_of(:ranges, r, score BETWEEN r.low AND r.high) ORDER BY id",
+        {"ranges": [{"low": 5, "high": 15}, {"low": 18, "high": 30}]},
+        [1, 2],
+    ),
+    Case(
+        "any_of",
+        "SELECT id FROM macro_items WHERE tpl.any_of(:ranges, r, score > r.low) ORDER BY id",
+        {"ranges": []},
+        [],
+    ),
     # Nothing to sort by writes a term each database takes: `id` sorts after it.
     Case(
         "order_by",

@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -432,6 +433,7 @@ def test_signature_says_how_a_template_calls_a_macro() -> None:
         "tpl.arrays_overlap(array, other)",
         "tpl.array_contains_all(array, other)",
         "tpl.values(:rows)",
+        "tpl.any_of(:rows, row, condition)",
     ]
 
 
@@ -626,6 +628,60 @@ def test_if_not_set_writes_what_unless_set_writes(values: dict[str, Any]) -> Non
     if_not = unless.replace("unless_set", "if_not_set")
 
     assert render(if_not, postgresql.dialect(), **values) == written
+
+
+def test_any_of_writes_the_condition_for_each_row_joined_with_or() -> None:
+    template = sql_module.MacroTemplate(
+        "cities.sql",
+        "WHERE x AND tpl.any_of(:cities, city, d(city.lon, city.lat) <= city.km)",
+        sql_module.registered([]),
+    )
+    dialect = postgresql.dialect()
+    cities = [SimpleNamespace(lon=1, lat=2, km=3), {"lon": 4, "lat": 5, "km": 6}]
+    ctx = Context(dialect.name, dialect.identifier_preparer, {"cities": cities})
+
+    written = template.render(ctx)
+
+    assert written == (
+        "WHERE x AND (d(:cities_lon__1, :cities_lat__2) <= :cities_km__3"
+        " OR d(:cities_lon__4, :cities_lat__5) <= :cities_km__6)"
+    )
+    assert {key: ctx.values[key] for key in ctx.values if key != "cities"} == {
+        "cities_lon__1": 1,
+        "cities_lat__2": 2,
+        "cities_km__3": 3,
+        "cities_lon__4": 4,
+        "cities_lat__5": 5,
+        "cities_km__6": 6,
+    }
+
+
+def test_any_of_leaves_strings_and_comments_as_written() -> None:
+    source = "WHERE tpl.any_of(:rows, r, name <> 'r.a' AND a = r.a -- r.a\n)"
+
+    assert render(source, postgresql.dialect(), rows=[{"a": 1}, {"a": 2}]) == (
+        "WHERE ((name <> 'r.a' AND a = :rows_a__1 -- r.a ) OR "
+        "(name <> 'r.a' AND a = :rows_a__2 -- r.a ))"
+    )
+
+
+@pytest.mark.parametrize("values", [{}, {"rows": None}, {"rows": []}])
+def test_any_of_no_rows_is_false(values: dict[str, Any]) -> None:
+    source = "WHERE tpl.any_of(:rows, r, a = r.a)"
+
+    assert render(source, postgresql.dialect(), **values) == "WHERE FALSE"
+
+
+def test_any_of_says_which_field_a_row_lacks() -> None:
+    source = "WHERE tpl.any_of(:rows, r, a = r.aa)"
+
+    with pytest.raises(MacroArgumentError, match="a row of `:rows` has no field `aa`"):
+        render(source, postgresql.dialect(), rows=[{"a": 1}])
+
+
+def test_any_of_reads_the_fields_of_a_name() -> None:
+    with pytest.raises(MacroArgumentError, match="is not a name"):
+        render("WHERE tpl.any_of(:rows, r.x, a = 1)", postgresql.dialect(), rows=[1])
 
 
 def test_unless_set_takes_what_to_write_when_the_value_is_there() -> None:

@@ -392,6 +392,7 @@ docstrings. `sqlakit macros app.sql.macros` adds the macros of a module, and
 | `tpl.array(:list[, 'text'])` | an array, cast to the type on PostgreSQL |
 | `tpl.arrays_overlap(a, b)`, `tpl.array_contains_all(a, b)` | `&&` and `@>` on PostgreSQL, their Snowflake functions |
 | `tpl.values(:rows)` | a small table written out in the query |
+| `tpl.any_of(:rows, row, condition)` | the condition for each row, `row.field` bound to its field, joined with `OR` |
 | `tpl.json_object(...)`, `tpl.array_agg(...)`, `tpl.string_agg(...)`, `tpl.array_contains(...)` | the function each database spells its own way |
 | `tpl.on_dialect(postgresql = a, snowflake = b)` | the branch of the database in hand |
 | `tpl.include('path.sql')` | the query of another template, in parentheses |
@@ -439,6 +440,34 @@ Where databases spell something differently, a macro writes the right form
 for each: `icontains` is `ILIKE` on PostgreSQL and `CONTAINS(COLLATE(...))` on
 Snowflake. `on_dialect` covers what no macro does, such as a table that lives
 elsewhere on one database.
+
+### Match any of several rows
+
+A filter by several rows, cities with a radius or ranges of dates, has two
+forms. When each row is matched by equalities only, join the rows as a table:
+
+```sql
+WHERE EXISTS (
+    SELECT 1 FROM tpl.values(:regions) AS v
+    WHERE r.country_code = v.column1 AND r.region_code = v.column2
+)
+```
+
+When a row is matched by anything else, a distance, a range or a `LIKE`,
+write the condition once and let `tpl.any_of` write it for each row:
+
+```sql
+WHERE tpl.any_of(
+    :cities, city,
+    ST_DISTANCE(p.location, ST_POINT(city.lon, city.lat)) <= city.radius
+)
+```
+
+Snowflake runs the first form as a join, and refuses a subquery tied to the
+outer row by anything but equalities. PostgreSQL runs both. `any_of` writes
+SQL that grows with the rows, so keep it to a few dozen. No rows is `FALSE`:
+wrap the call in `tpl.if_set(:cities, ...)` for a filter that is off when
+nothing is passed.
 
 `tpl.include` puts the query of another file where a table goes, and adds
 brackets unless the call already stands in some. Both templates use the same
@@ -663,7 +692,9 @@ A linter reads a macro call where a value goes: in `WHERE`, in `SELECT`, after
 `ORDER BY`, and where a table goes in `FROM`. Every argument of a built-in
 macro is an expression, so a template stays SQL to it, and `fix` formats it.
 Write an optional `JOIN` as a condition: `EXISTS (...)`, or `LEFT JOIN tags
-AS t ON t.order_id = o.id AND tpl.if_set(:tag, TRUE, FALSE)`.
+AS t ON t.order_id = o.id AND tpl.if_set(:tag, TRUE, FALSE)`. On Snowflake,
+tie an `EXISTS` to the outer row by equalities only, as [match any of several
+rows](#match-any-of-several-rows) shows.
 
 ### What the macros write
 
