@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A problem in a SQL macro whose body starts on the line below its `SELECT`
+  was placed a line above where it is, in `sqlakit check` and in an editor:
+  the lines of the body counted from the `SELECT`. They count from where the
+  body starts, in the file, for every macro of it.
+
 ## 0.22.8
 
 ### Added

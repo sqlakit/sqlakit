@@ -613,6 +613,9 @@ def sql_macros(path: Path | str, source: str | None = None) -> list[SqlMacro]:
             problem = f"its arguments in {path.name}:{line} name one twice: {params}"
             raise MacroDefinitionError(name, problem, line=line)
         named = offset + statement.start("name")
+        # The body may start below its `SELECT`, where its lines count from.
+        body = statement.group("body")
+        body_at = offset + statement.start("body") + len(body) - len(body.lstrip())
         found.append(
             SqlMacro(
                 name,
@@ -621,7 +624,7 @@ def sql_macros(path: Path | str, source: str | None = None) -> list[SqlMacro]:
                 doc=" ".join(one for one in doc if one),
                 path=path,
                 line=line,
-                body_line=line,
+                body_line=source.count("\n", 0, body_at) + 1,
                 name_at=(
                     source.count("\n", 0, named) + 1,
                     named - (source.rfind("\n", 0, named) + 1),
