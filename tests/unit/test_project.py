@@ -349,6 +349,34 @@ def test_check_says_when_the_project_says_nothing(
     assert "Cannot read the project's templates" in capsys.readouterr().out
 
 
+def test_a_broken_sql_macro_is_placed_on_its_line_below_the_select(
+    project: Path,
+) -> None:
+    # A macro above it, so its lines count from where it stands in the file.
+    source = (
+        "-- Rows of the team.\n"
+        "SELECT\n"
+        "    t.team = :team\n"
+        "    AND t.active AS for_team\n"
+        "FROM t;\n"
+        "\n"
+        "-- Rows near a city.\n"
+        "SELECT\n"
+        "    tpl.if_set(\n"
+        "        :filters.radius,\n"
+        "        tpl.nope(:filters.cities)\n"
+        "    ) AS near\n"
+        "FROM t;\n"
+    )
+    macros = project / "_macros.sql"
+
+    found = load_project(project).macro_problems(macros, source)
+
+    assert [line for line, _ in found] == [
+        source.splitlines().index("        tpl.nope(:filters.cities)") + 1
+    ]
+
+
 def test_check_names_a_broken_sql_macro(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
