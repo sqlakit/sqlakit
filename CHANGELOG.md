@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.8
 
 ### Added
 
@@ -10,6 +10,9 @@
   `EXISTS` over `tpl.values`, since it refuses a subquery tied to the outer
   row by anything but equalities. A row is an object or a mapping, and no
   rows is `FALSE`.
+  A project with a macro of its own named `any_of` now gets
+  `MacroDefinitionError`, as two macros share the name: drop yours, or give it
+  another name.
 
 ## 0.22.7
 

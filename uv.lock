@@ -1779,7 +1779,7 @@ wheels = [
 
 [[package]]
 name = "sqlakit"
-version = "0.22.7"
+version = "0.22.8"
 source = { editable = "." }
 dependencies = [
     { name = "sqlalchemy" },
