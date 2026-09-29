@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `tpl.any_of(:rows, row, condition)` writes the condition once for each row,
+  `row.field` bound to the row's field, and joins them with `OR`: a filter by
+  cities within a radius, or by ranges, which Snowflake cannot run as an
+  `EXISTS` over `tpl.values`, since it refuses a subquery tied to the outer
+  row by anything but equalities. A row is an object or a mapping, and no
+  rows is `FALSE`.
+
 ## 0.22.7
 
 ### Fixed

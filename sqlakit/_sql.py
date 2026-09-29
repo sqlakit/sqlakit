@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sized
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, is_dataclass
-from functools import cache, cached_property, lru_cache
+from functools import cache, cached_property, lru_cache, partial
 from inspect import iscoroutinefunction
 from pathlib import Path
 from types import SimpleNamespace
@@ -2293,6 +2293,69 @@ def array_contains_all(ctx: Context, array: Sql, other: Sql) -> str:
     return f"({array} @> {other})"
 
 
+@sql_macro(optional=True)
+def any_of(ctx: Context, rows: Param, row: Sql, condition: Sql) -> str:
+    """Whether the condition holds for any of the rows, `row.field` reading a field.
+
+    ```sql
+    WHERE tpl.any_of(
+        :cities, city,
+        ST_DISTANCE(p.location, ST_POINT(city.lon, city.lat)) <= city.radius
+    )
+    ```
+
+    The condition is written once for each row, its `city.field` bound to the
+    row's field, and the conditions joined with `OR`. A row is an object or a
+    mapping. No rows, or none passed, is `FALSE`: wrap the call in
+    `tpl.if_set(:cities, ...)` for a filter that is off when nothing is passed.
+
+    The SQL grows with the rows, so this is for a few dozen. A condition made
+    of equalities only is better as `EXISTS (SELECT 1 FROM tpl.values(:rows) AS
+    v WHERE t.a = v.column1)`, which the database joins. Snowflake evaluates no
+    subquery tied to the outer row by anything else, a distance, a range or a
+    `LIKE`, and this macro covers those.
+
+    Raises:
+        MacroArgumentError: if ``row`` is not a name, or a row has no field the
+            condition reads.
+
+    """
+    name = str(row).strip()
+    if not _IDENTIFIER.fullmatch(name):
+        problem = f"`{name}` is not a name to read the fields of a row under"
+        raise MacroArgumentError(any_of.name, problem)
+    field = re.compile(
+        rf"{_LITERAL}|(?<![\w.]){re.escape(name)}\.(?P<field>[A-Za-z_]\w*)\b",
+        re.DOTALL,
+    )
+    prefix = _named(rows)
+
+    def written(item: Any, found: re.Match[str]) -> str:  # noqa: ANN401
+        key = found.group("field")
+        if key is None:
+            return found.group()
+        try:
+            value = item[key] if isinstance(item, Mapping) else getattr(item, key)
+        except (KeyError, AttributeError):
+            problem = f"a row of `{_as_written(rows)}` has no field `{key}`"
+            raise MacroArgumentError(any_of.name, problem) from None
+        return ctx.bind(value, f"{prefix}_{key}" if prefix else key)
+
+    text = str(condition)
+    # A `--` comment at the end would take the `)` and the `OR` after it along.
+    if any(
+        found.group().startswith("--") and found.end() == len(text.rstrip())
+        for found in re.finditer(_LITERAL, text, re.DOTALL)
+    ):
+        text = text.rstrip() + "\n"
+    conditions = [
+        _grouped(field.sub(partial(written, item), text)) for item in rows.value or ()
+    ]
+    if not conditions:
+        return "FALSE"
+    return _grouped(" OR ".join(conditions))
+
+
 @sql_macro(name="values")
 def values_table(ctx: Context, rows: Param) -> str:
     """Write a small table out in the query, one parameter per value.
@@ -2310,7 +2373,9 @@ def values_table(ctx: Context, rows: Param) -> str:
     and PostgreSQL wants one type down a column: cast where the rows mix them.
 
     For a few dozen rows. Hundreds are better sent as one JSON value and
-    unpacked in the database, with `FLATTEN` or `json_array_elements`.
+    unpacked in the database, with `FLATTEN` or `json_array_elements`. In an
+    `EXISTS` tied to the outer row, compare by equalities only: Snowflake
+    refuses any other tie, and `any_of` writes that condition for each row.
 
     Raises:
         MacroArgumentError: if there are no rows, or they differ in length.
@@ -2595,6 +2660,7 @@ BUILTIN_MACROS: Mapping[str, Macro] = {
         arrays_overlap,
         array_contains_all,
         values_table,
+        any_of,
     )
 }
 
