@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `db.override(test_db)` uses another database under an alias until the block
+  ends. Tests use it to point an application that configures `sqlakit.db`
+  itself at the test database.
+- `transaction` and `autocommit` decorators, in `sqlakit` and
+  `sqlakit.asyncio`, find the database each time the function runs:
+  `@transaction(using="replica")`, or
+  `@transaction(using=lambda: container.resolve(Database))`.
+
+### Fixed
+
+- Blocks of a registry decorated at import, such as `@db.transaction`, now use
+  the database the registry has when they run.
+- `repr()` of a registry with a registered default database no longer raises.
+
 ## 0.22.9
 
 ### Fixed

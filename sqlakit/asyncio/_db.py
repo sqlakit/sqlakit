@@ -183,6 +183,11 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
     @asynccontextmanager
     async def connect(self) -> AsyncIterator[AsyncConnection]:
         """Open a connection and bind it, or reuse the one already bound."""
+        elsewhere = self._stand_in()
+        if elsewhere is not None:
+            async with elsewhere.connect() as connection:
+                yield connection
+            return
         reuse = self._scope_to_reuse()
         if reuse is not None:
             async with self._bound(await self._areused(reuse)) as connection:
@@ -225,6 +230,11 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
     @asynccontextmanager
     async def _autocommit(self) -> AsyncIterator[AsyncConnection]:
         """Open a connection in ``AUTOCOMMIT`` and bind it, or join the outer one."""
+        elsewhere = self._stand_in()
+        if elsewhere is not None:
+            async with elsewhere.autocommit() as connection:
+                yield connection
+            return
         outer = self._connection_to_join()
         if outer is not None:
             async with self._bound(outer, commit=True) as connection:
@@ -355,6 +365,11 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         flush, as ``async_sessionmaker()`` does it. Inside another block it
         runs on the connection already bound.
         """
+        elsewhere = self._stand_in()
+        if elsewhere is not None:
+            async with elsewhere.session_factory() as session:
+                yield session
+            return
         reuse = self._scope_to_reuse()
         if reuse is not None:
             async with self._bound(await self._areused(reuse)):
@@ -512,6 +527,18 @@ class Transaction(
 
     async def __aenter__(self) -> AsyncConnection:
         stack = AsyncExitStack()
+        elsewhere = self.db._stand_in()  # noqa: SLF001
+        if elsewhere is not None:
+            connection = await stack.enter_async_context(
+                elsewhere.transaction(
+                    savepoint=self.savepoint,
+                    join_nested=self.join_nested,
+                    rollback=self.rollback,
+                    commit_on_error=self.commit_on_error,
+                )
+            )
+            self._stacks.append(stack)
+            return connection
         try:
             outer, savepoint = self.db._plan(  # noqa: SLF001
                 savepoint=self.savepoint,

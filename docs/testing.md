@@ -489,6 +489,45 @@ def sqlakit_schema(
 
 Point the application at the same URL, in `conftest.py` or in the settings the
 tests load, or the migrations and the tests will run on two different servers.
+If the application configures `sqlakit.db` itself, see the next section.
+
+## Point the application at the test database
+
+If your application configures `sqlakit.db` itself, at startup or on import,
+use `db.override()` to point it at the test database. Return the registry from
+`sqlakit_db`:
+
+```python title="conftest.py"
+from collections.abc import Iterator
+
+import pytest
+import sqlalchemy as sa
+
+from sqlakit import Database, Databases, db
+from sqlakit.orm import Model
+
+
+@pytest.fixture(scope="session")
+def sqlakit_base() -> type[Model]:
+    return Model
+
+
+@pytest.fixture(scope="session")
+def sqlakit_db() -> Iterator[Databases]:
+    test_db = Database("sqlite://", engine_args={"poolclass": sa.StaticPool})
+    with test_db, db.override(test_db):
+        yield db
+```
+
+Inside the block, `db.session`, `db.transaction()`, the models and decorated
+functions all use the test database. Every thread sees it, so a server running
+in its own thread does too. For another alias, pass `alias="replica"`.
+
+`override()` doesn't close the database. The `with test_db` does.
+
+A function decorated through a dependency-injection proxy keeps the database
+it got at import. Decorate it with
+[`transaction`](context.md#databases-found-at-call-time) instead.
 
 ## Migrations instead of `create_all`
 

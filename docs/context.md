@@ -224,6 +224,38 @@ with db.transaction(rollback=True):
 A test runs against a real database this way and leaves it as it found it. The
 [testing](testing.md) page builds on this.
 
+### Databases found at call time
+
+A decorator runs at import. If `db` is a `Database`, or a dependency-injection
+proxy for one, `@db.transaction` keeps the database it got then. A test that
+swaps the database later doesn't reach that function.
+
+`transaction` from `sqlakit` finds the database each time the function runs:
+
+```python
+from sqlakit import Database, transaction
+
+archive_db = Database("sqlite://")
+
+
+@transaction  # the default database of `sqlakit.db`
+def import_users() -> None: ...
+
+
+@transaction(using="replica")  # an alias in `sqlakit.db`
+def rebuild_report() -> None: ...
+
+
+@transaction(using=lambda: archive_db)  # whatever the function returns
+def archive_orders() -> None: ...
+```
+
+It takes the same arguments as `db.transaction()`. `autocommit` works the same
+way. Under `asyncio`, import both from `sqlakit.asyncio`.
+
+`@db.transaction` on `sqlakit.db` itself doesn't need this. The registry finds
+its database each time a block opens.
+
 All arguments and their defaults are listed in the
 [reference](reference.md#transaction-arguments).
 
