@@ -102,6 +102,8 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
     @property
     def engine(self) -> AsyncEngine:
         """The underlying engine, created on first access."""
+        if self._override is not None:
+            return self._override.engine
         if self._engine is None:
             with self._engine_lock:
                 # Two threads reaching this at once would each build one, and
@@ -127,6 +129,8 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
             MissingConnectionError: if no connection is bound.
 
         """
+        if self._override is not None:
+            return self._override.connection
         scope = self._current_scope()
         if scope.connection is None:
             cell = scope.checkout
@@ -143,6 +147,8 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
 
     async def _aconnection(self) -> AsyncConnection:
         """Return the bound connection, checking it out first if lazy."""
+        if self._override is not None:
+            return await self._override._aconnection()  # noqa: SLF001
         return await self._areused(self._current_scope())
 
     def _create_session(self, connection: AsyncConnection) -> AsyncSession:
@@ -183,7 +189,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
     @asynccontextmanager
     async def connect(self) -> AsyncIterator[AsyncConnection]:
         """Open a connection and bind it, or reuse the one already bound."""
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             async with elsewhere.connect() as connection:
                 yield connection
@@ -230,7 +236,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
     @asynccontextmanager
     async def _autocommit(self) -> AsyncIterator[AsyncConnection]:
         """Open a connection in ``AUTOCOMMIT`` and bind it, or join the outer one."""
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             async with elsewhere.autocommit() as connection:
                 yield connection
@@ -365,7 +371,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         flush, as ``async_sessionmaker()`` does it. Inside another block it
         runs on the connection already bound.
         """
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             async with elsewhere.session_factory() as session:
                 yield session
@@ -434,6 +440,10 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         Every table of the metadata unless ``tables`` names fewer, as a second
         database wants.
         """
+        if self._override is not None:
+            async with self._override.provisioned_tables(metadata, tables=tables):
+                yield
+            return
         async with self.transaction() as connection:
             await connection.run_sync(metadata.create_all, tables=tables)
         try:
@@ -444,6 +454,8 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
 
     async def ping(self) -> bool:
         """Whether the database answers."""
+        if self._override is not None:
+            return await self._override.ping()
         try:
             async with self.engine.connect() as connection:
                 await connection.execute(sa.text("SELECT 1"))
@@ -527,7 +539,7 @@ class Transaction(
 
     async def __aenter__(self) -> AsyncConnection:
         stack = AsyncExitStack()
-        elsewhere = self.db._stand_in()  # noqa: SLF001
+        elsewhere = self.db._override  # noqa: SLF001
         if elsewhere is not None:
             connection = await stack.enter_async_context(
                 elsewhere.transaction(

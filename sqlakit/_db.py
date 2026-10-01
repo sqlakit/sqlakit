@@ -98,6 +98,8 @@ class Database(BaseDatabase[sa.Connection, Session]):
     @property
     def engine(self) -> Engine:
         """The underlying engine, created on first access."""
+        if self._override is not None:
+            return self._override.engine
         if self._engine is None:
             with self._engine_lock:
                 # Two threads reaching this at once would each build one, and
@@ -122,6 +124,8 @@ class Database(BaseDatabase[sa.Connection, Session]):
             MissingConnectionError: if no connection is bound.
 
         """
+        if self._override is not None:
+            return self._override.connection
         return self._reused(self._current_scope())
 
     def _create_session(self, connection: sa.Connection) -> Session:
@@ -149,7 +153,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
     @contextmanager
     def connect(self) -> Iterator[sa.Connection]:
         """Open a connection and bind it, or reuse the one already bound."""
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             with elsewhere.connect() as connection:
                 yield connection
@@ -196,7 +200,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
     @contextmanager
     def _autocommit(self) -> Iterator[sa.Connection]:
         """Open a connection in ``AUTOCOMMIT`` and bind it, or join the outer one."""
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             with elsewhere.autocommit() as connection:
                 yield connection
@@ -331,7 +335,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         flush, as ``sessionmaker()`` does it. Inside another block it runs on
         the connection already bound.
         """
-        elsewhere = self._stand_in()
+        elsewhere = self._override
         if elsewhere is not None:
             with elsewhere.session_factory() as session:
                 yield session
@@ -400,6 +404,10 @@ class Database(BaseDatabase[sa.Connection, Session]):
         Every table of the metadata unless ``tables`` names fewer, as a second
         database wants.
         """
+        if self._override is not None:
+            with self._override.provisioned_tables(metadata, tables=tables):
+                yield
+            return
         with self.transaction() as connection:
             metadata.create_all(connection, tables=tables)
         try:
@@ -410,6 +418,8 @@ class Database(BaseDatabase[sa.Connection, Session]):
 
     def ping(self) -> bool:
         """Whether the database answers."""
+        if self._override is not None:
+            return self._override.ping()
         try:
             with self.engine.connect() as connection:
                 connection.execute(sa.text("SELECT 1"))
@@ -487,7 +497,7 @@ class Transaction(ContextDecorator, AbstractContextManager["sa.Connection"]):
 
     def __enter__(self) -> sa.Connection:
         stack = ExitStack()
-        elsewhere = self.db._stand_in()  # noqa: SLF001
+        elsewhere = self.db._override  # noqa: SLF001
         if elsewhere is not None:
             connection = stack.enter_context(
                 elsewhere.transaction(

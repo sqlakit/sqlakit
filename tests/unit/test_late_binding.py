@@ -494,3 +494,136 @@ def test_a_registered_default_is_found_when_the_block_opens(
 
         assert _names(test_db) == ["ada"]
         assert _names(registered) == ["grace"]
+
+
+# a database of your own
+
+
+@pytest.fixture
+def app_db() -> Iterator[Database]:
+    """The database an application keeps in a module and imports."""
+    with _database() as database:
+        yield database
+
+
+def test_a_database_works_on_another_for_the_block(
+    app_db: Database, test_db: Database
+) -> None:
+    @app_db.transaction
+    def create(name: str) -> None:
+        app_db.session.add(User(name=name))
+
+    with app_db.override(test_db) as overridden:
+        assert overridden is test_db
+        assert app_db.engine is test_db.engine
+        create("ada")
+        with app_db.connect() as conn:
+            assert app_db.connection is conn
+            assert conn.scalar(sa.text("SELECT name FROM users")) == "ada"
+
+    assert _names(test_db) == ["ada"]
+    assert _names(app_db) == []
+    assert app_db.engine is not test_db.engine
+
+
+def test_every_member_of_a_database_follows(
+    app_db: Database, test_db: Database
+) -> None:
+    with app_db.override(test_db):
+        assert app_db.ping() is True
+
+    with app_db.override(test_db), app_db.transaction():
+        assert app_db.in_transaction() is True
+        assert test_db.in_transaction() is True
+        assert app_db.in_session() is False
+        app_db.session.add(User(name="ada"))
+        assert app_db.in_session() is True
+        assert app_db.session is test_db.session
+        assert app_db.sql.from_string("SELECT name FROM users").scalars().all() == [
+            "ada"
+        ]
+        with app_db.unbound():
+            assert test_db.in_session() is False
+
+
+def test_a_recording_of_a_database_records_the_other(
+    app_db: Database, test_db: Database
+) -> None:
+    with app_db.override(test_db):
+        with app_db.assert_queries(1), app_db.connect() as conn:
+            conn.execute(sa.text("SELECT 1"))
+        with app_db.recording() as recording, app_db.connect() as conn:
+            conn.execute(sa.text("SELECT 2"))
+
+    assert [statement.sql for statement in recording.statements] == ["SELECT 2"]
+
+
+def test_provisioned_tables_of_a_database_go_to_the_other(test_db: Database) -> None:
+    with (
+        Database("sqlite://", engine_args={"poolclass": sa.StaticPool}) as app_db,
+        Database("sqlite://", engine_args={"poolclass": sa.StaticPool}) as empty,
+        app_db.override(empty),
+        app_db.provisioned_tables(
+            Base.metadata, tables=[Base.metadata.tables["events"]]
+        ),
+        empty.connect() as conn,
+    ):
+        assert sa.inspect(conn).get_table_names() == ["events"]
+
+
+def test_a_model_pinned_to_a_database_follows_it(
+    app_db: Database, test_db: Database
+) -> None:
+    class OwnBase(ModelMixin, DeclarativeBase):
+        pass
+
+    class Note(OwnBase):
+        __tablename__ = "users"
+
+        id: Mapped[int] = mapped_column(primary_key=True)
+        name: Mapped[str]
+
+    OwnBase.set_db(app_db)
+
+    with app_db.override(test_db), app_db.transaction():
+        Note(name="ada").save()
+
+    assert _names(test_db) == ["ada"]
+
+
+def test_a_database_comes_back_after_the_block(
+    app_db: Database, test_db: Database
+) -> None:
+    with _database() as inner, app_db.override(test_db):
+        with app_db.override(inner):
+            assert app_db.engine is inner.engine
+        assert app_db.engine is test_db.engine
+
+    with pytest.raises(ZeroDivisionError), app_db.override(test_db):
+        _ = 1 / 0
+
+    with app_db.override(app_db), app_db.transaction():
+        app_db.session.add(User(name="ada"))
+
+    assert _names(app_db) == ["ada"]
+
+
+def test_every_thread_sees_a_database_override(
+    app_db: Database, test_db: Database
+) -> None:
+    seen: list[Any] = []
+
+    with app_db.override(test_db):
+        thread = threading.Thread(target=lambda: seen.append(app_db.engine))
+        thread.start()
+        thread.join()
+
+    assert seen == [test_db.engine]
+
+
+def test_the_templates_of_a_registered_default(test_db: Database) -> None:
+    registry = Databases()
+    registry.register(DEFAULT_ALIAS, test_db)
+
+    with registry.connect():
+        assert registry.sql.from_string("SELECT 1").scalars().all() == [1]

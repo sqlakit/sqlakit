@@ -232,6 +232,9 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
     """
 
     _engine: Any = None  # narrowed by the subclass
+    # The database to work on instead of this one, or None. Every public member
+    # checks it first, so a database without one pays one attribute read.
+    _override: Any = None
 
     def __init__(
         self,
@@ -299,6 +302,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         self._listened: Any = None
         self._listening_lock = threading.Lock()
         self._name = alias or DEFAULT_ALIAS
+        self._override = None
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.url.render_as_string()!r})"
@@ -332,6 +336,8 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
             MissingSessionError: if no connection is bound.
 
         """
+        if self._override is not None:
+            return self._override.session
         try:
             scope = self._scope.get()
         except LookupError:
@@ -384,6 +390,18 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         after. `with` is right on either side, awaited or not: it listens, it does
         not run anything.
         """
+        if self._override is not None:
+            with self._override.recording(
+                label,
+                logger=logger,
+                echo=echo,
+                stacks=stacks,
+                skip_queries_from=skip_queries_from,
+                into=into,
+                send_to=send_to,
+            ) as recording:
+                yield recording
+            return
         recording = Recording(label=label) if into is None else into
         self._listen()
         recordings = self._recordings.set((*self._recordings.get(), recording))
@@ -507,6 +525,8 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
 
         False under ``connect()`` and ``autocommit()``, which open none.
         """
+        if self._override is not None:
+            return self._override.in_transaction()
         return self._outer.get(None) is not None
 
     @property
@@ -542,6 +562,8 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         this is False in a block that has only run statements on the
         connection. Reading it opens nothing.
         """
+        if self._override is not None:
+            return self._override.in_session()
         scope = self._scope.get(None)
         return scope is not None and scope.session is not None
 
@@ -563,6 +585,10 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         A block opened inside still joins the transaction around it, and rolls
         back with it.
         """
+        if self._override is not None:
+            with self._override.unbound():
+                yield
+            return
         scope = self._scope.get(None)
         if scope is None:
             yield
@@ -617,9 +643,24 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         outer = self._outer_to_join()
         return outer, savepoint or rollback or bool(outer and outer.savepoint)
 
-    def _stand_in(self) -> Any:  # noqa: ANN401
-        """Return the database to open blocks on instead of this one, or None."""
-        return None
+    @contextmanager
+    def override(self, db: Self) -> Iterator[Self]:
+        """Use another database in place of this one until the block ends.
+
+        ```python
+        with Database(TEST_URL) as test_db, db.override(test_db):
+            create_user("ada")  # runs on test_db
+        ```
+
+        Every thread sees it. The database stays open when the block ends, so
+        close it yourself.
+        """
+        before = self._override
+        self._override = None if db is self else db
+        try:
+            yield db
+        finally:
+            self._override = before
 
     def _outer_to_join(self) -> _Outer[ConnectionT] | None:
         """Return the outer transaction new blocks join, if there is one."""
@@ -816,6 +857,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         self._default: DatabaseT | None = None
         self._aliased: dict[str, DatabaseT] = {}
         self._overridden: dict[str, DatabaseT] = {}
+        self._override = None
         self._routers: tuple[Any, ...] = ()
         self._using: ContextVar[str | None] = ContextVar(
             f"{type(self).__name__}.using", default=None
@@ -824,7 +866,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
     def __repr__(self) -> str:
         if self._built_its_own:
             return super().__repr__()
-        held = self._stand_in()
+        held = self._override
         if held is None:
             return f"{type(self).__name__}(unconfigured)"
         return f"{type(self).__name__}({held!r})"
@@ -884,6 +926,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
             if self.is_configured:
                 raise DefaultAliasError
             self._default = self._named(alias, db)
+            self._follow_default()
             return
         if alias in self._aliased:
             raise AliasInUseError(alias)
@@ -995,6 +1038,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         before = self._overridden.get(alias)
         named = getattr(db, "_name", None)
         self._overridden[alias] = self._named(alias, db)
+        self._follow_default()
         try:
             yield db
         finally:
@@ -1002,13 +1046,14 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
                 del self._overridden[alias]
             else:
                 self._overridden[alias] = before
+            self._follow_default()
             if named is not None:
                 db._name = named  # noqa: SLF001
 
-    def _stand_in(self) -> DatabaseT | None:
-        """Return the database the default alias leads to, if not this registry."""
+    def _follow_default(self) -> None:
+        """Work on the database the default alias leads to, unless it is this one."""
         held = self._overridden.get(DEFAULT_ALIAS, self._default)
-        return None if held is self else held
+        self._override = None if held is self else held
 
     def using(self, target: str | DatabaseT) -> _Using:
         """Return that database, standing in for the default one.
@@ -1130,7 +1175,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
     @property
     def is_configured(self) -> bool:
         """Whether this registry has a default database to reach."""
-        return "url" in self.__dict__ or self._stand_in() is not None
+        return "url" in self.__dict__ or self._override is not None
 
     @property
     def _built_its_own(self) -> bool:
@@ -1138,38 +1183,13 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         return "url" in self.__dict__
 
     if not TYPE_CHECKING:
-        # Hidden from type checkers, which keep reading these off `Database`
-        # and its asyncio twin, signatures and all.
-        def _proxy(name: str, *, attribute: bool = False) -> Any:  # noqa: ANN401, N805
-            """Proxy to the database this registry holds, or call its own.
-
-            A registry handed a default, or overridden for a block, proxies to
-            that database. One that `configure` built calls what it inherits,
-            which `super()` reaches.
-            """
-
-            def reach(self: Any, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
-                held = self._stand_in()
-                found = (
-                    getattr(held, name) if held is not None else getattr(super(), name)
-                )
-                return found if attribute else found(*args, **kwargs)
-
-            return property(reach) if attribute else reach
-
-        connection = _proxy("connection", attribute=True)
-        engine = _proxy("engine", attribute=True)
-        session = _proxy("session", attribute=True)
-        sql = _proxy("sql", attribute=True)
-        assert_queries = _proxy("assert_queries")
-        in_session = _proxy("in_session")
-        in_transaction = _proxy("in_transaction")
-        ping = _proxy("ping")
-        provisioned_tables = _proxy("provisioned_tables")
-        query = _proxy("query")
-        del _proxy
-        # `connect`, `autocommit`, `session_factory` and `transaction` are not
-        # proxied: the ones inherited look `_stand_in` up as the block opens.
+        # Hidden from type checkers, which read it off `Database`.
+        @property
+        def sql(self) -> Any:  # noqa: ANN401
+            """The templates of the default database, wherever it was built."""
+            if self._built_its_own or self._override is None:
+                return super().sql
+            return self._override.sql
 
     @overload
     def configure(
