@@ -224,6 +224,50 @@ with db.transaction(rollback=True):
 A test runs against a real database this way and leaves it as it found it. The
 [testing](testing.md) page builds on this.
 
+### Databases found at call time
+
+A decorator runs at import, so `@db.transaction` on a `Database` keeps that
+database for good. On `sqlakit.db` that's fine: the registry looks its database
+up as each block opens, and follows
+[`override()`](testing.md#point-the-application-at-the-test-database).
+
+A lazy reference is different. If `db` is a dependency-injection container's
+proxy, `@db.transaction` resolves it at import, and anything that swaps the
+database later misses the decorated functions. A test that points the
+application at a test database is one case. An application that builds its
+database after its modules are imported is another.
+
+`transaction` from `sqlakit` looks the database up each time the function is
+called:
+
+```python
+from sqlakit import Database, transaction
+
+archive_db = Database("sqlite://")
+
+
+@transaction  # the default database of `sqlakit.db`
+def import_users() -> None: ...
+
+
+@transaction(using="replica")  # an alias in `sqlakit.db`
+def rebuild_report() -> None: ...
+
+
+@transaction(using=lambda: archive_db)  # what the callable returns
+def archive_orders() -> None: ...
+```
+
+With a container, the callable asks it:
+`@transaction(using=lambda: container.resolve(Database))`.
+
+It takes the arguments of `db.transaction()`, `retry_on` included, and every
+retry looks the database up again. `autocommit` does the same for
+`db.autocommit()`. Under `asyncio`, import both from `sqlakit.asyncio`.
+
+Both are decorators only. A `with` block opens where it stands, so
+`with db.transaction():` already reaches the database when the code runs.
+
 All arguments and their defaults are listed in the
 [reference](reference.md#transaction-arguments).
 

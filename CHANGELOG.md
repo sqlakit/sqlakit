@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `db.override(test_db)` puts another database under an alias for a block, and
+  returns it. Everything that reaches the alias through the registry reaches
+  that database: `db.session`, its blocks, the models on it. It holds for every
+  thread, needs no configured alias, and leaves the database open for whoever
+  built it. A test points an application that configures `sqlakit.db` itself
+  at the test database this way, whatever order the modules were imported in.
+- `transaction` and `autocommit`, in `sqlakit` and `sqlakit.asyncio`, decorate
+  a function with a block on a database looked up on every call: the
+  registry's default, an alias with `using="replica"`, or what a callable
+  returns with `using=lambda: container.resolve(Database)`. They take the
+  arguments of `Database.transaction`, and a retry looks the database up
+  again.
+
+### Fixed
+
+- `@db.transaction`, `@db.autocommit`, `db.connect()` and
+  `db.session_factory()` on a registry find its database as the block opens,
+  not when they are called, so a function decorated at import follows a
+  database registered or overridden later.
+- `repr()` of a registry with a registered default raised
+  `DatabaseNotConfiguredError`.
+
 ## 0.22.9
 
 ### Fixed

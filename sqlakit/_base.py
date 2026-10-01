@@ -617,6 +617,15 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         outer = self._outer_to_join()
         return outer, savepoint or rollback or bool(outer and outer.savepoint)
 
+    def _stand_in(self) -> Any:  # noqa: ANN401
+        """Return the database whose blocks this one opens instead, or None.
+
+        A database opens its own. A registry opens those of the database it
+        holds or is overridden with, looked up as each block opens, so a block
+        decorated at import follows an override.
+        """
+        return None
+
     def _outer_to_join(self) -> _Outer[ConnectionT] | None:
         """Return the outer transaction new blocks join, if there is one."""
         outer = self._outer.get(None)
@@ -811,15 +820,19 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         """Leave everything to [`configure`][sqlakit.Databases.configure]."""
         self._default: DatabaseT | None = None
         self._aliased: dict[str, DatabaseT] = {}
+        self._overridden: dict[str, DatabaseT] = {}
         self._routers: tuple[Any, ...] = ()
         self._using: ContextVar[str | None] = ContextVar(
             f"{type(self).__name__}.using", default=None
         )
 
     def __repr__(self) -> str:
-        if not self.is_configured:
+        if self._built_its_own:
+            return super().__repr__()
+        held = self._stand_in()
+        if held is None:
             return f"{type(self).__name__}(unconfigured)"
-        return super().__repr__()
+        return f"{type(self).__name__}({held!r})"
 
     def __getitem__(self, alias: str) -> Self | DatabaseT:
         """Return the database configured as ``alias``.
@@ -831,6 +844,8 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
             UnknownDatabaseError: if nothing is configured under that alias.
 
         """
+        if alias in self._overridden:
+            return self._overridden[alias]
         if alias == DEFAULT_ALIAS:
             return self if self._default is None else self._default
         try:
@@ -839,7 +854,11 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
             raise UnknownDatabaseError(alias, self.aliases) from None
 
     def __contains__(self, alias: str) -> bool:
-        return alias == DEFAULT_ALIAS or alias in self._aliased
+        return (
+            alias == DEFAULT_ALIAS
+            or alias in self._aliased
+            or alias in self._overridden
+        )
 
     def register(self, alias: str, db: DatabaseT) -> None:
         """Put a database already built under an alias.
@@ -961,6 +980,55 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         db._name = alias  # noqa: SLF001
         return db
 
+    @contextmanager
+    def override(
+        self,
+        db: DatabaseT,
+        *,
+        alias: str = DEFAULT_ALIAS,
+    ) -> Iterator[DatabaseT]:
+        """Put another database under an alias for the block, and return it.
+
+        For a test that runs the application against a database of its own:
+
+        ```python
+        with Database(TEST_URL) as test_db, db.override(test_db):
+            ...
+        ```
+
+        Everything that reaches the alias through this registry reaches that
+        database: `db.session` and `db.transaction()` for the default one,
+        `db["replica"]` for another, the models that live on it, and
+        `@transaction`. It holds for the whole process, every thread and task,
+        as the override of a dependency-injection container does, so a server
+        the test drives in another thread sees it too.
+
+        The alias does not have to be configured, and the database does not have
+        to be registered. On exit the alias means what it meant before, and the
+        database is left open: whoever built it disposes of it.
+
+        `using` is the other way to send a model elsewhere. It keeps every alias
+        as it is and sends the models on the default one to another alias,
+        where this changes what the alias is.
+        """
+        before = self._overridden.get(alias)
+        named = getattr(db, "_name", None)
+        self._overridden[alias] = self._named(alias, db)
+        try:
+            yield db
+        finally:
+            if before is None:
+                del self._overridden[alias]
+            else:
+                self._overridden[alias] = before
+            if named is not None:
+                db._name = named  # noqa: SLF001
+
+    def _stand_in(self) -> DatabaseT | None:
+        """Return the database the default alias proxies to, if not this registry."""
+        held = self._overridden.get(DEFAULT_ALIAS, self._default)
+        return None if held is self else held
+
     def using(self, target: str | DatabaseT) -> _Using:
         """Return that database, standing in for the default one.
 
@@ -997,6 +1065,16 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
             UnregisteredDatabaseError: if it holds it under none.
 
         """
+        alias = self._held_as(db)
+        if alias is None:
+            raise UnregisteredDatabaseError(self.aliases)
+        return alias
+
+    def _held_as(self, db: object) -> str | None:
+        """Return the alias this registry holds a database under, or None."""
+        for alias, held in self._overridden.items():
+            if held is db:
+                return alias
         # A configured registry is the default database itself, and a
         # registered one holds it.
         if db is self or db is self._default:
@@ -1004,7 +1082,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         for alias, held in self._aliased.items():
             if held is db:
                 return alias
-        raise UnregisteredDatabaseError(self.aliases)
+        return None
 
     def route(self, *routers: Router | RouterFunction | str) -> None:
         """Say which database a model lives on, for models that do not say it.
@@ -1038,16 +1116,17 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         opened with `using()` stands in for the default database.
         """
         placement = self._routed(model) or model.__db__
-        override = self._using.get()
-        if isinstance(placement, str):
-            if override is not None and placement == DEFAULT_ALIAS:
-                placement = override
-            return self[placement]
-        # A model pinned to the database itself follows `using()` as one on the
-        # default alias does, when that database is the one being stood in for.
-        if override is not None and self[DEFAULT_ALIAS] is placement:
-            return self[override]
-        return placement
+        if not isinstance(placement, str):
+            # A model pinned to a database this registry holds follows the
+            # alias it is held under, `using()` and `override()` alike.
+            alias = self._held_as(placement)
+            if alias is None:
+                return placement
+            placement = alias
+        redirected = self._using.get()
+        if redirected is not None and placement == DEFAULT_ALIAS:
+            placement = redirected
+        return self[placement]
 
     def _routed(self, model: type[Any]) -> str | None:
         """Return what the first router says about this model, if anything."""
@@ -1059,13 +1138,18 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
 
     @property
     def aliases(self) -> tuple[str, ...]:
-        """The aliases configured, the default one first."""
-        return (DEFAULT_ALIAS, *self._aliased)
+        """The aliases configured or overridden, the default one first."""
+        overridden = (
+            alias
+            for alias in self._overridden
+            if alias != DEFAULT_ALIAS and alias not in self._aliased
+        )
+        return (DEFAULT_ALIAS, *self._aliased, *overridden)
 
     @property
     def is_configured(self) -> bool:
         """Whether this registry has a default database to reach."""
-        return "url" in self.__dict__ or self._default is not None
+        return "url" in self.__dict__ or self._stand_in() is not None
 
     @property
     def _built_its_own(self) -> bool:
@@ -1078,12 +1162,13 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         def _proxy(name: str, *, attribute: bool = False) -> Any:  # noqa: ANN401, N805
             """Proxy to the database this registry holds, or call its own.
 
-            A registry handed a default proxies to that database. One that
-            `configure` built calls what it inherits, which `super()` reaches.
+            A registry handed a default, or overridden for a block, proxies to
+            that database. One that `configure` built calls what it inherits,
+            which `super()` reaches.
             """
 
             def reach(self: Any, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
-                held = self._default
+                held = self._stand_in()
                 found = (
                     getattr(held, name) if held is not None else getattr(super(), name)
                 )
@@ -1096,16 +1181,14 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         session = _proxy("session", attribute=True)
         sql = _proxy("sql", attribute=True)
         assert_queries = _proxy("assert_queries")
-        autocommit = _proxy("autocommit")
-        connect = _proxy("connect")
         in_session = _proxy("in_session")
         in_transaction = _proxy("in_transaction")
         ping = _proxy("ping")
         provisioned_tables = _proxy("provisioned_tables")
         query = _proxy("query")
-        session_factory = _proxy("session_factory")
-        transaction = _proxy("transaction")
         del _proxy
+        # `connect`, `autocommit`, `session_factory` and `transaction` are not
+        # proxied: the ones inherited look `_stand_in` up as the block opens.
 
     @overload
     def configure(
@@ -1373,6 +1456,22 @@ class BaseRetryingTransaction:
 
         async def __aexit__(self, *exc_info: object) -> None:
             raise AssertionError  # pragma: no cover
+
+
+def late_bound(source: object, registry: Any) -> Any:  # noqa: ANN401
+    """Return the database a late-bound decorator opens its block on, now.
+
+    Nothing is the registry, whose default is looked up as the block opens. A
+    name is an alias in it, a callable is asked, and anything else is the
+    database itself.
+    """
+    if source is None:
+        return registry
+    if isinstance(source, str):
+        return registry[source]
+    if callable(source):
+        return source()
+    return source
 
 
 def retry_matches(exc: BaseException, retry_on: RetryOn) -> bool:

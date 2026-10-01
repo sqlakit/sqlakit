@@ -10,7 +10,7 @@ from ._query import (
     orderable_columns,
 )
 from ._recording import Recording, Statement
-from ._registry import Databases, db
+from ._registry import Databases, autocommit, db, transaction
 from ._routing import Router
 from .exceptions import (
     DEFAULT_ALIAS,
@@ -142,8 +142,10 @@ __all__ = [
     "UnregisteredDatabaseError",
     "UrlParts",
     "ValidationArgs",
+    "autocommit",
     "db",
     "import_models",
     "import_string",
     "orderable_columns",
+    "transaction",
 ]

@@ -116,6 +116,10 @@ supported.
     options:
       inherited_members: true
 
+::: sqlakit.transaction
+
+::: sqlakit.autocommit
+
 ## Model
 
 All model behavior lives on the mixin. `Model` combines that mixin with a
@@ -208,6 +212,10 @@ The same classes, awaited.
 ::: sqlakit.asyncio.RetryingTransaction
     options:
       inherited_members: true
+
+::: sqlakit.asyncio.transaction
+
+::: sqlakit.asyncio.autocommit
 
 ::: sqlakit.asyncio.orm.ModelMixin
     options:
