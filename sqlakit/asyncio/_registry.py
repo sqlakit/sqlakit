@@ -117,34 +117,9 @@ def transaction(  # noqa: PLR0913  (all keyword-only, as on `Database`)
     max_retries: int = 3,
     backoff: Callable[[int], float] = default_backoff,
 ) -> _FuncT | Callable[[_FuncT], _FuncT] | RetryingTransaction:
-    """Run the function in a transaction on a database found when it is called.
+    """Like `Database.transaction`, but find the database on every call.
 
-    The asyncio counterpart of [`sqlakit.transaction`][sqlakit.transaction]:
-
-    ```python
-    from sqlakit.asyncio import transaction
-
-
-    @transaction(using="replica")
-    async def rebuild_report() -> None: ...
-    ```
-
-    Args:
-        func: The function to decorate, when used as a bare decorator.
-        using: Where the transaction opens. Nothing is the default database of
-            [`sqlakit.asyncio.db`][sqlakit.asyncio.db], a name is an alias in it, and a callable
-            returns the database. A database is taken as it is, and a lazy
-            reference to one is then resolved on each call.
-        savepoint: As on `Database.transaction`.
-        join_nested: As on `Database.transaction`.
-        rollback: As on `Database.transaction`.
-        commit_on_error: As on `Database.transaction`.
-        retry_on: As on `Database.transaction`, which makes this return a
-            [`RetryingTransaction`][sqlakit.asyncio.RetryingTransaction]. Every attempt
-            looks the database up again.
-        max_retries: As on `Database.transaction`.
-        backoff: As on `Database.transaction`.
-
+    The asyncio version of [`sqlakit.transaction`][sqlakit.transaction].
     """
 
     def opened() -> Transaction:
@@ -185,14 +160,9 @@ def autocommit(
     *,
     using: str | Database | Callable[[], Database] | None = None,
 ) -> _FuncT | Callable[[_FuncT], _FuncT]:
-    """Run the function in ``AUTOCOMMIT``, on a database found when it is called.
+    """Like `Database.autocommit`, but find the database on every call.
 
-    The asyncio counterpart of [`sqlakit.autocommit`][sqlakit.autocommit].
-
-    Args:
-        func: The function to decorate, when used as a bare decorator.
-        using: Where the block opens, as `transaction` takes it.
-
+    The asyncio version of [`sqlakit.autocommit`][sqlakit.autocommit].
     """
 
     def opened() -> Any:  # noqa: ANN401
@@ -206,7 +176,7 @@ def autocommit(
 
 
 def _opening(opened: Callable[[], Any]) -> Callable[[_FuncT], _FuncT]:
-    """Return a decorator that runs the function in the block `opened` returns."""
+    """Return a decorator that runs the function inside `opened()`."""
 
     def decorate(func: _FuncT) -> _FuncT:
         @functools.wraps(func)

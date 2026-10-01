@@ -618,12 +618,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         return outer, savepoint or rollback or bool(outer and outer.savepoint)
 
     def _stand_in(self) -> Any:  # noqa: ANN401
-        """Return the database whose blocks this one opens instead, or None.
-
-        A database opens its own. A registry opens those of the database it
-        holds or is overridden with, looked up as each block opens, so a block
-        decorated at import follows an override.
-        """
+        """Return the database to open blocks on instead of this one, or None."""
         return None
 
     def _outer_to_join(self) -> _Outer[ConnectionT] | None:
@@ -987,29 +982,15 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         *,
         alias: str = DEFAULT_ALIAS,
     ) -> Iterator[DatabaseT]:
-        """Put another database under an alias for the block, and return it.
-
-        For a test that runs the application against a database of its own:
+        """Use another database under an alias until the block ends.
 
         ```python
         with Database(TEST_URL) as test_db, db.override(test_db):
-            ...
+            create_user("ada")  # runs on test_db
         ```
 
-        Everything that reaches the alias through this registry reaches that
-        database: `db.session` and `db.transaction()` for the default one,
-        `db["replica"]` for another, the models that live on it, and
-        `@transaction`. It holds for the whole process, every thread and task,
-        as the override of a dependency-injection container does, so a server
-        the test drives in another thread sees it too.
-
-        The alias does not have to be configured, and the database does not have
-        to be registered. On exit the alias means what it meant before, and the
-        database is left open: whoever built it disposes of it.
-
-        `using` is the other way to send a model elsewhere. It keeps every alias
-        as it is and sends the models on the default one to another alias,
-        where this changes what the alias is.
+        Every thread sees it. The database stays open when the block ends, so
+        close it yourself.
         """
         before = self._overridden.get(alias)
         named = getattr(db, "_name", None)
@@ -1025,7 +1006,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
                 db._name = named  # noqa: SLF001
 
     def _stand_in(self) -> DatabaseT | None:
-        """Return the database the default alias proxies to, if not this registry."""
+        """Return the database the default alias leads to, if not this registry."""
         held = self._overridden.get(DEFAULT_ALIAS, self._default)
         return None if held is self else held
 
@@ -1459,12 +1440,7 @@ class BaseRetryingTransaction:
 
 
 def late_bound(source: object, registry: Any) -> Any:  # noqa: ANN401
-    """Return the database a late-bound decorator opens its block on, now.
-
-    Nothing is the registry, whose default is looked up as the block opens. A
-    name is an alias in it, a callable is asked, and anything else is the
-    database itself.
-    """
+    """Return the database ``using=`` points at: the registry, an alias, or a call."""
     if source is None:
         return registry
     if isinstance(source, str):

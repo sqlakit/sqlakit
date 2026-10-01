@@ -128,17 +128,9 @@ def transaction(  # noqa: PLR0913  (all keyword-only, as on `Database`)
     max_retries: int = 3,
     backoff: Callable[[int], float] = default_backoff,
 ) -> _FuncT | Callable[[_FuncT], _FuncT] | RetryingTransaction:
-    """Run the function in a transaction on a database found when it is called.
-
-    [`Database.transaction`][sqlakit.Database.transaction] keeps the database it
-    was called on, at import. This looks the database up on every call, so a
-    test that swaps it, or an application that builds it after its modules are
-    imported, reaches every decorated function:
+    """Like `Database.transaction`, but find the database on every call.
 
     ```python
-    from sqlakit import transaction
-
-
     @transaction
     def import_users() -> None: ...
 
@@ -151,25 +143,9 @@ def transaction(  # noqa: PLR0913  (all keyword-only, as on `Database`)
     def create_user(name: str) -> None: ...
     ```
 
-    A decorator only: a `with` block opens at once, so it reaches the database
-    as late as this would.
-
-    Args:
-        func: The function to decorate, when used as a bare decorator.
-        using: Where the transaction opens. Nothing is the default database of
-            [`sqlakit.db`][sqlakit.db], a name is an alias in it, and a callable
-            returns the database. A database is taken as it is, and a lazy
-            reference to one is then resolved on each call.
-        savepoint: As on `Database.transaction`.
-        join_nested: As on `Database.transaction`.
-        rollback: As on `Database.transaction`.
-        commit_on_error: As on `Database.transaction`.
-        retry_on: As on `Database.transaction`, which makes this return a
-            [`RetryingTransaction`][sqlakit.RetryingTransaction]. Every attempt
-            looks the database up again.
-        max_retries: As on `Database.transaction`.
-        backoff: As on `Database.transaction`.
-
+    ``using`` is an alias in [`sqlakit.db`][sqlakit.db], or a function that
+    returns the database. Without it, the default database of `sqlakit.db`.
+    The other arguments are those of `Database.transaction`.
     """
 
     def opened() -> Transaction:
@@ -210,23 +186,9 @@ def autocommit(
     *,
     using: str | Database | Callable[[], Database] | None = None,
 ) -> _FuncT | Callable[[_FuncT], _FuncT]:
-    """Run the function in ``AUTOCOMMIT``, on a database found when it is called.
+    """Like `Database.autocommit`, but find the database on every call.
 
-    [`Database.autocommit`][sqlakit.Database.autocommit], with the database
-    looked up on every call as [`transaction`][sqlakit.transaction] does it:
-
-    ```python
-    from sqlakit import autocommit
-
-
-    @autocommit(using="warehouse")
-    def vacuum() -> None: ...
-    ```
-
-    Args:
-        func: The function to decorate, when used as a bare decorator.
-        using: Where the block opens, as `transaction` takes it.
-
+    ``using`` works as in [`transaction`][sqlakit.transaction].
     """
 
     def opened() -> Any:  # noqa: ANN401
@@ -240,7 +202,7 @@ def autocommit(
 
 
 def _opening(opened: Callable[[], Any]) -> Callable[[_FuncT], _FuncT]:
-    """Return a decorator that runs the function in the block `opened` returns."""
+    """Return a decorator that runs the function inside `opened()`."""
 
     def decorate(func: _FuncT) -> _FuncT:
         @functools.wraps(func)

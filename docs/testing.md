@@ -489,18 +489,13 @@ def sqlakit_schema(
 
 Point the application at the same URL, in `conftest.py` or in the settings the
 tests load, or the migrations and the tests will run on two different servers.
-If the application configures `sqlakit.db` itself, the next section shows how
-to swap it.
+If the application configures `sqlakit.db` itself, see the next section.
 
 ## Point the application at the test database
 
-Your application may configure `sqlakit.db` on its own, at startup or when its
-settings module is imported. The tests then need it to reach the test database
-instead. If you build the database in the tests and configure the registry
-there, skip this section.
-
-`db.override()` puts another database under an alias for a block. Return the
-registry from `sqlakit_db`, with the test database under it:
+If your application configures `sqlakit.db` itself, at startup or on import,
+use `db.override()` to point it at the test database. Return the registry from
+`sqlakit_db`:
 
 ```python title="conftest.py"
 from collections.abc import Iterator
@@ -524,22 +519,14 @@ def sqlakit_db() -> Iterator[Databases]:
         yield db
 ```
 
-Inside the block, everything that reaches the default alias through
-`sqlakit.db` reaches the test database: `db.session`, `db.transaction()`, the
-models and functions decorated with
-[`transaction`](context.md#databases-found-at-call-time). The order the
-modules are imported in doesn't matter. `alias="replica"` swaps another alias
-the same way.
+Inside the block, `db.session`, `db.transaction()`, the models and decorated
+functions all use the test database. Every thread sees it, so a server running
+in its own thread does too. For another alias, pass `alias="replica"`.
 
-The override holds for the whole process, every thread included, so a server
-the test drives in a thread of its own reaches the test database too. When the
-block ends, the alias means what it meant before. `override()` doesn't dispose
-of the database, so the `with test_db` around it does.
+`override()` doesn't close the database. The `with test_db` does.
 
-`@db.transaction`, `@db.autocommit` and the other blocks of the registry look
-the override up as they open, decorated at import or not. A function decorated
-through a lazy reference to a `Database`, such as a container's proxy, keeps
-the database it was decorated with. Decorate it with
+A function decorated through a dependency-injection proxy keeps the database
+it got at import. Decorate it with
 [`transaction`](context.md#databases-found-at-call-time) instead.
 
 ## Migrations instead of `create_all`

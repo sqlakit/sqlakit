@@ -226,19 +226,11 @@ A test runs against a real database this way and leaves it as it found it. The
 
 ### Databases found at call time
 
-A decorator runs at import, so `@db.transaction` on a `Database` keeps that
-database for good. On `sqlakit.db` that's fine: the registry looks its database
-up as each block opens, and follows
-[`override()`](testing.md#point-the-application-at-the-test-database).
+A decorator runs at import. If `db` is a `Database`, or a dependency-injection
+proxy for one, `@db.transaction` keeps the database it got then. A test that
+swaps the database later doesn't reach that function.
 
-A lazy reference is different. If `db` is a dependency-injection container's
-proxy, `@db.transaction` resolves it at import, and anything that swaps the
-database later misses the decorated functions. A test that points the
-application at a test database is one case. An application that builds its
-database after its modules are imported is another.
-
-`transaction` from `sqlakit` looks the database up each time the function is
-called:
+`transaction` from `sqlakit` finds the database each time the function runs:
 
 ```python
 from sqlakit import Database, transaction
@@ -254,19 +246,15 @@ def import_users() -> None: ...
 def rebuild_report() -> None: ...
 
 
-@transaction(using=lambda: archive_db)  # what the callable returns
+@transaction(using=lambda: archive_db)  # whatever the function returns
 def archive_orders() -> None: ...
 ```
 
-With a container, the callable asks it:
-`@transaction(using=lambda: container.resolve(Database))`.
+It takes the same arguments as `db.transaction()`. `autocommit` works the same
+way. Under `asyncio`, import both from `sqlakit.asyncio`.
 
-It takes the arguments of `db.transaction()`, `retry_on` included, and every
-retry looks the database up again. `autocommit` does the same for
-`db.autocommit()`. Under `asyncio`, import both from `sqlakit.asyncio`.
-
-Both are decorators only. A `with` block opens where it stands, so
-`with db.transaction():` already reaches the database when the code runs.
+`@db.transaction` on `sqlakit.db` itself doesn't need this. The registry finds
+its database each time a block opens.
 
 All arguments and their defaults are listed in the
 [reference](reference.md#transaction-arguments).
