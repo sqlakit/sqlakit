@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `Database.override(test_db)` uses another database in place of this one
+  until the block ends, as `db.override()` does on the registry. Tests use it
+  to point an application that keeps its own `Database` at the test database.
+
+### Changed
+
+- A registry reads `db.session`, `db.connection` and the other members of its
+  default database about twice as fast.
+
 ## 0.22.10
 
 ### Added

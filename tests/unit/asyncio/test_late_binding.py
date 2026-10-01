@@ -228,3 +228,34 @@ async def test_a_block_of_the_registry_decorated_before_follows(
 
     assert await _names(test_db) == ["ada"]
     assert await _names(real) == []
+
+
+@pytest.mark.anyio
+async def test_a_database_works_on_another_for_the_block(test_db: Database) -> None:
+    async with await _database() as app_db:
+
+        @app_db.transaction
+        async def create(name: str) -> None:
+            app_db.session.add(User(name=name))
+
+        with app_db.override(test_db):
+            await create("ada")
+            assert await app_db.ping() is True
+            async with app_db.connect():
+                assert app_db.engine is test_db.engine
+                assert app_db.connection is test_db.connection
+                rows = app_db.sql.from_string("SELECT name FROM users").scalars()
+                assert await rows.all() == ["ada"]
+            async with Database("sqlite+aiosqlite://") as empty:
+                with app_db.override(empty):
+                    async with (
+                        app_db.provisioned_tables(Base.metadata),
+                        empty.connect() as conn,
+                    ):
+                        tables = await conn.run_sync(
+                            lambda sync: sa.inspect(sync).get_table_names()
+                        )
+                        assert tables == ["users"]
+
+        assert await _names(test_db) == ["ada"]
+        assert await _names(app_db) == []

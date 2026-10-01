@@ -226,8 +226,8 @@ A test runs against a real database this way and leaves it as it found it. The
 
 ### Databases found at call time
 
-A decorator runs at import. If `db` is a `Database`, or a dependency-injection
-proxy for one, `@db.transaction` keeps the database it got then. A test that
+A decorator runs at import. If `db` is a dependency-injection proxy,
+`@db.transaction` keeps the database the proxy returned then. A test that
 swaps the database later doesn't reach that function.
 
 `transaction` from `sqlakit` finds the database each time the function runs:
@@ -253,8 +253,8 @@ def archive_orders() -> None: ...
 It takes the same arguments as `db.transaction()`. `autocommit` works the same
 way. Under `asyncio`, import both from `sqlakit.asyncio`.
 
-`@db.transaction` on `sqlakit.db` itself doesn't need this. The registry finds
-its database each time a block opens.
+`@db.transaction` on `sqlakit.db` or on a `Database` doesn't need this. Both
+follow [`override()`](testing.md#point-the-application-at-the-test-database).
 
 All arguments and their defaults are listed in the
 [reference](reference.md#transaction-arguments).

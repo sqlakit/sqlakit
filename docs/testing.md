@@ -493,9 +493,9 @@ If the application configures `sqlakit.db` itself, see the next section.
 
 ## Point the application at the test database
 
-If your application configures `sqlakit.db` itself, at startup or on import,
-use `db.override()` to point it at the test database. Return the registry from
-`sqlakit_db`:
+If your application sets up its database itself, at startup or on import, use
+`db.override()` to point it at the test database. With `sqlakit.db`, return the
+registry from `sqlakit_db`:
 
 ```python title="conftest.py"
 from collections.abc import Iterator
@@ -522,6 +522,19 @@ def sqlakit_db() -> Iterator[Databases]:
 Inside the block, `db.session`, `db.transaction()`, the models and decorated
 functions all use the test database. Every thread sees it, so a server running
 in its own thread does too. For another alias, pass `alias="replica"`.
+
+A `Database` of your own has `override()` too:
+
+```python title="conftest.py"
+from app.db import db  # db = Database(settings.DATABASE_URL)
+
+
+@pytest.fixture(scope="session")
+def sqlakit_db() -> Iterator[Database]:
+    test_db = Database("sqlite://", engine_args={"poolclass": sa.StaticPool})
+    with test_db, db.override(test_db):
+        yield db
+```
 
 `override()` doesn't close the database. The `with test_db` does.
 
