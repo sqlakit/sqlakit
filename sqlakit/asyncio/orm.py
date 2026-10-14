@@ -42,10 +42,16 @@ from sqlakit._query import (
 from sqlakit.exceptions import InstanceNotFoundError
 
 from ._db import Database
-from ._registry import Databases, db
+from ._registry import db
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterator,
+        Iterable,
+        Mapping,
+        Sequence,
+    )
 
     from sqlalchemy.engine import CursorResult, Result, ScalarResult
     from sqlalchemy.orm import InstrumentedAttribute
@@ -644,8 +650,8 @@ class ModelMixin(BaseModel[Database]):
     [`set_db`][sqlakit.asyncio.orm.ModelMixin.set_db].
     """
 
-    __db__: ClassVar[str | Database] = DEFAULT_ALIAS
-    __dbs__: ClassVar[Databases] = db
+    __db__ = DEFAULT_ALIAS
+    __dbs__ = db
 
     # Not annotated: a model's `query = UserQuery.as_descriptor()` would take
     # the declared type and read as `Query[User]`.
@@ -655,7 +661,7 @@ class ModelMixin(BaseModel[Database]):
 
     @classmethod
     @asynccontextmanager
-    async def provisioned_tables(cls, alias: str | None = None) -> AsyncIterator[None]:
+    async def provisioned_tables(cls, alias: str | None = None) -> AsyncGenerator[None]:
         """Create the tables that belong on this model's database, and drop them after.
 
         A test session opens this once, around everything that needs a schema:
@@ -670,7 +676,7 @@ class ModelMixin(BaseModel[Database]):
         With models on more than one database, name the alias, and each database
         gets the tables of the models pointed at it.
         """
-        db = cls.db if alias is None else cls.__dbs__[alias]
+        db = cls.db if alias is None else cls.dbs[alias]
         async with db.provisioned_tables(cls.metadata, tables=tables_for(cls, db)):
             yield
 

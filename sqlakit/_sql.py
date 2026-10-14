@@ -6,7 +6,7 @@ import importlib.util
 import inspect
 import itertools
 import re
-from collections.abc import Mapping, Sized
+from collections.abc import Generator, Mapping, Sized
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, is_dataclass
@@ -49,7 +49,7 @@ from .exceptions import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from pydantic import BaseModel, TypeAdapter
     from sqlalchemy.sql import Executable
@@ -86,7 +86,7 @@ _calls_kept: ContextVar[bool] = ContextVar("sqlakit.calls_kept", default=False)
 
 
 @contextmanager
-def calls_kept() -> Iterator[None]:
+def calls_kept() -> Generator[None]:
     """Write a call that cannot be made with the values at hand as the call itself.
 
     An editor shows a template rendered with made-up values, or with none: a

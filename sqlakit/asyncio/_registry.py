@@ -9,7 +9,7 @@ from sqlakit._base import _DatabaseRegistryMixin, default_backoff, late_bound
 from ._db import Database, RetryingTransaction
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncGenerator, Callable
 
     from sqlakit._base import RetryOn
 
@@ -41,7 +41,7 @@ class Databases(_DatabaseRegistryMixin[Database], Database):
     async def transactions(
         self,
         **arguments: Any,  # noqa: ANN401
-    ) -> AsyncIterator[None]:
+    ) -> AsyncGenerator[None]:
         """Open a transaction on every database, not the default one alone.
 
         A test harness with more than one database needs this, where a single

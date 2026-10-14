@@ -6,7 +6,7 @@ a query raises answered in one place.
 """
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -72,7 +72,7 @@ class UserFeed(BaseModel, from_attributes=True):
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # A real service would run migrations; creating the tables keeps the example short.
     async with db.transaction() as conn:
         await conn.run_sync(Model.metadata.create_all)
