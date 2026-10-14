@@ -29,7 +29,7 @@ from ._base import (
 from .exceptions import TransactionRolledBackError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Generator, Sequence
     from types import TracebackType
 
     from sqlalchemy.engine import Engine
@@ -151,7 +151,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         return cast("sa.Connection", scope.connection)
 
     @contextmanager
-    def connect(self) -> Iterator[sa.Connection]:
+    def connect(self) -> Generator[sa.Connection]:
         """Open a connection and bind it, or reuse the one already bound."""
         elsewhere = self._override
         if elsewhere is not None:
@@ -198,7 +198,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         return autocommit
 
     @contextmanager
-    def _autocommit(self) -> Iterator[sa.Connection]:
+    def _autocommit(self) -> Generator[sa.Connection]:
         """Open a connection in ``AUTOCOMMIT`` and bind it, or join the outer one."""
         elsewhere = self._override
         if elsewhere is not None:
@@ -328,7 +328,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         return transaction
 
     @contextmanager
-    def session_factory(self) -> Iterator[Session]:
+    def session_factory(self) -> Generator[Session]:
         """Open a session for the block, and bind it.
 
         The session arrives at once, the connection on its first query or
@@ -365,7 +365,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         *,
         commit: bool = False,
         autocommit: bool = False,
-    ) -> Iterator[sa.Connection]:
+    ) -> Generator[sa.Connection]:
         """Bind ``connection`` for the block, ending the session it opened.
 
         ``commit`` keeps that session's work. Closing a session that isolates
@@ -389,7 +389,7 @@ class Database(BaseDatabase[sa.Connection, Session]):
         metadata: sa.MetaData,
         *,
         tables: Sequence[sa.Table] | None = None,
-    ) -> Iterator[None]:
+    ) -> Generator[None]:
         """Create these tables here, and drop them when the block ends.
 
         A test session opens this once, around everything that needs a schema:

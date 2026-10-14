@@ -37,7 +37,7 @@ from sqlakit._base import (
 from sqlakit.exceptions import MissingConnectionError, TransactionRolledBackError
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from collections.abc import AsyncGenerator, Callable, Coroutine, Sequence
     from types import TracebackType
 
     from sqlalchemy.ext.asyncio import AsyncTransaction
@@ -187,7 +187,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         return cast("AsyncConnection", scope.connection)
 
     @asynccontextmanager
-    async def connect(self) -> AsyncIterator[AsyncConnection]:
+    async def connect(self) -> AsyncGenerator[AsyncConnection]:
         """Open a connection and bind it, or reuse the one already bound."""
         elsewhere = self._override
         if elsewhere is not None:
@@ -234,7 +234,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         return autocommit
 
     @asynccontextmanager
-    async def _autocommit(self) -> AsyncIterator[AsyncConnection]:
+    async def _autocommit(self) -> AsyncGenerator[AsyncConnection]:
         """Open a connection in ``AUTOCOMMIT`` and bind it, or join the outer one."""
         elsewhere = self._override
         if elsewhere is not None:
@@ -364,7 +364,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         return transaction
 
     @asynccontextmanager
-    async def session_factory(self) -> AsyncIterator[AsyncSession]:
+    async def session_factory(self) -> AsyncGenerator[AsyncSession]:
         """Open a session for the block, and bind it.
 
         The session arrives at once, the connection on its first query or
@@ -401,7 +401,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         *,
         commit: bool = False,
         autocommit: bool = False,
-    ) -> AsyncIterator[AsyncConnection]:
+    ) -> AsyncGenerator[AsyncConnection]:
         """Bind ``connection`` for the block, ending the session it opened.
 
         ``commit`` keeps that session's work. Closing a session that isolates
@@ -425,7 +425,7 @@ class Database(BaseDatabase[AsyncConnection, AsyncSession]):
         metadata: sa.MetaData,
         *,
         tables: Sequence[sa.Table] | None = None,
-    ) -> AsyncIterator[None]:
+    ) -> AsyncGenerator[None]:
         """Create these tables here, and drop them when the block ends.
 
         A test session opens this once, around everything that needs a schema:

@@ -356,7 +356,7 @@ there is nothing to await.
 ## `FastAPI` integration
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -369,7 +369,7 @@ db = Database("postgresql+psycopg://localhost/app")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
     await db.dispose()  # close the pool on shutdown
 

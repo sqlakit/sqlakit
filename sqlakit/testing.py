@@ -12,7 +12,7 @@ from .exceptions import UnknownDatabaseError
 from .types import AssertQueries
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
 
 __all__ = ["AssertQueries", "assert_queries"]
 
@@ -24,7 +24,7 @@ def assert_queries(
     at_most: int | None = None,
     duplicates: bool = True,
     using: str | Any = None,  # noqa: ANN401
-) -> Iterator[Recording]:
+) -> Generator[Recording]:
     """Assert what the block asks of the database.
 
     ```python

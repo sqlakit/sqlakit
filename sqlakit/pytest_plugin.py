@@ -55,7 +55,7 @@ from ._registry import db as importable_db
 from .exceptions import UnknownDatabaseError
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator, Sequence
+    from collections.abc import AsyncIterator, Generator, Iterator, Sequence
 
     import sqlalchemy as sa
 
@@ -346,7 +346,7 @@ def assert_queries(sqlakit_db: Any) -> AssertQueries:  # noqa: ANN401
         at_most: int | None = None,
         duplicates: bool = True,
         using: Any = None,  # noqa: ANN401
-    ) -> Iterator[Recording]:
+    ) -> Generator[Recording]:
         require_expectation(count, at_most, duplicates)
         recording = Recording()
         with ExitStack() as stack:
@@ -402,7 +402,7 @@ async def _sqlakit_async_transaction(
 
 
 @contextmanager
-def _reported(request: pytest.FixtureRequest, db: Any) -> Iterator[None]:  # noqa: ANN401
+def _reported(request: pytest.FixtureRequest, db: Any) -> Generator[None]:  # noqa: ANN401
     """Record what the test runs, for the report, when one was asked for.
 
     The recording is named after the test and filed under the file it lives in,
@@ -435,7 +435,7 @@ def _named(node: pytest.Item) -> str:
 
 
 @contextmanager
-def _entered(blocks: list[Any]) -> Iterator[None]:
+def _entered(blocks: list[Any]) -> Generator[None]:
     """Hold these blocks open, awaiting the ones that need it.
 
     An `asyncio` database builds its schema in a coroutine, and this fixture is

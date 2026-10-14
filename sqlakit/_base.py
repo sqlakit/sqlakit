@@ -5,7 +5,7 @@ import inspect
 import random
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -56,7 +56,7 @@ from .exceptions import (
 
 if TYPE_CHECKING:
     import logging
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Sequence
     from os import PathLike
 
     from sqlalchemy.engine import Engine
@@ -364,7 +364,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         skip_queries_from: Sequence[str | PathLike[str]] = (),
         into: Recording | None = None,
         send_to: Callable[[Recording], object] | None = None,
-    ) -> Iterator[Recording]:
+    ) -> Generator[Recording]:
         """Record the statements of this block, and what they add up to.
 
         ```python
@@ -430,7 +430,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         *,
         at_most: int | None = None,
         duplicates: bool = True,
-    ) -> Iterator[Recording]:
+    ) -> Generator[Recording]:
         """Assert what the block asks of this database.
 
         ```python
@@ -568,7 +568,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         return scope is not None and scope.session is not None
 
     @contextmanager
-    def unbound(self) -> Iterator[None]:
+    def unbound(self) -> Generator[None]:
         """Hide the block open around this one, for the code inside to open its own.
 
         A test opens a transaction for the whole test, so code that reaches for
@@ -644,7 +644,7 @@ class BaseDatabase(Generic[ConnectionT, SessionT]):
         return outer, savepoint or rollback or bool(outer and outer.savepoint)
 
     @contextmanager
-    def override(self, db: Self) -> Iterator[Self]:
+    def override(self, db: Self) -> Generator[Self]:
         """Use another database in place of this one until the block ends.
 
         ```python
@@ -944,7 +944,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         into: Recording | None = None,
         send_to: Callable[[Recording], object] | None = None,
         using: str | DatabaseT | Sequence[str | DatabaseT] | None = None,
-    ) -> Iterator[Recording]:
+    ) -> Generator[Recording]:
         """Record every database this registry has, not the default one alone.
 
         ```python
@@ -996,7 +996,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
                     send_to(together)
 
     @contextmanager
-    def unbound(self) -> Iterator[None]:
+    def unbound(self) -> Generator[None]:
         """Hide the block open on every database this registry holds."""
         with ExitStack() as stack:
             for alias in self.aliases:
@@ -1024,7 +1024,7 @@ class _DatabaseRegistryMixin(BaseDatabase[Any, Any], Generic[DatabaseT]):
         db: DatabaseT,
         *,
         alias: str = DEFAULT_ALIAS,
-    ) -> Iterator[DatabaseT]:
+    ) -> Generator[DatabaseT]:
         """Use another database under an alias until the block ends.
 
         ```python

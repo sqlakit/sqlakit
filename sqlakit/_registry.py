@@ -8,7 +8,7 @@ from ._base import _DatabaseRegistryMixin, default_backoff, late_bound
 from ._db import Database, RetryingTransaction
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
 
     from ._base import RetryOn
     from ._db import Transaction
@@ -40,7 +40,7 @@ class Databases(_DatabaseRegistryMixin[Database], Database):
     def transactions(
         self,
         **arguments: Any,  # noqa: ANN401
-    ) -> Iterator[None]:
+    ) -> Generator[None]:
         """Open a transaction on every database, not the default one alone.
 
         A single database needs `transaction(rollback=True)`. A test harness

@@ -53,7 +53,7 @@ DatabaseT = TypeVar("DatabaseT", bound="BaseDatabase[Any, Any]")
 class DatabaseSource(Protocol):
     """The registry an alias is looked up in: the importable one, or a stand-in."""
 
-    def __getitem__(self, alias: str) -> BaseDatabase[Any, Any]: ...
+    def __getitem__(self, alias: str, /) -> BaseDatabase[Any, Any]: ...
 
 
 class DatabaseDescriptor(Generic[DatabaseT]):

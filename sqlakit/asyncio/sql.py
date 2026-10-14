@@ -256,9 +256,7 @@ class SQLQuery(SQLRows[sa.Row[Any]]):
 
         """
         require_pydantic()
-        return cast(
-            "SQLRows[OtherT]", self._as(SQLRows, type_=type_, validation=validation)
-        )
+        return self._as(SQLRows, type_=type_, validation=validation)
 
     def scalars(self) -> SQLRows[Any]:
         """Read the first column of each row instead of whole rows.

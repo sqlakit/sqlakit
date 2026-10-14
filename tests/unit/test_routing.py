@@ -1,7 +1,7 @@
 """The database a model uses, and who decides."""
 
 from collections.abc import Iterator
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -217,7 +217,7 @@ def test_a_model_may_look_its_alias_up_somewhere_else() -> None:
     main = Database("sqlite://", engine_args={"poolclass": sa.StaticPool})
 
     class Standalone(ModelMixin, DeclarativeBase):
-        __dbs__: ClassVar[dict[str, Database]] = {"main": main}
+        __dbs__ = {"main": main}  # noqa: RUF012 - typed by the base, as any source
         __db__ = "main"
 
     class Ticket(Standalone):
@@ -240,7 +240,7 @@ def test_a_source_of_its_own_may_hand_over_the_database_itself() -> None:
     main = Database("sqlite://", engine_args={"poolclass": sa.StaticPool})
 
     class Held(ModelMixin, DeclarativeBase):
-        __dbs__: ClassVar[dict[str, Database]] = {"main": main}
+        __dbs__ = {"main": main}  # noqa: RUF012 - typed by the base, as any source
         __db__ = main  # the database itself, not a name to look up
 
     assert Held.db is main
