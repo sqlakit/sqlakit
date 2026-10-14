@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.22.12
+
+### Added
+
+- Python 3.15 support.
+
+### Fixed
+
+- Under `ty` 0.0.85 and later, `User.query` read as `Query[User]` when the
+  model set `query = UserQuery.as_descriptor()`, so every method of
+  `UserQuery` was an `unresolved-attribute`. It reads as `UserQuery` again.
+- Under `ty` 0.0.85 and later, a model that set `__dbs__` to a `dict` of
+  databases failed to type-check. It passes now. `Model.__dbs__` is typed as
+  any source of databases rather than `Databases`, so reach the registry's
+  methods through `Model.dbs`.
+
 ## 0.22.11
 
 ### Added
