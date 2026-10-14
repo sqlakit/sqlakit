@@ -611,8 +611,8 @@ class QueryDescriptor(Generic[QueryT]):
     def __init__(self, query_class: type[QueryT]) -> None:
         self.query_class = query_class
 
-    # `ClassVar` cannot hold a type variable, so the base declares the query
-    # every model has and a read narrows it to the model it is read from.
+    # `QueryDescriptor(Query)` reads as a query of the model it is read from,
+    # any other query class as itself.
     @overload
     def __get__(
         self: QueryDescriptor[Query[Any]],
@@ -647,7 +647,9 @@ class ModelMixin(BaseModel[Database]):
     __db__: ClassVar[str | Database] = DEFAULT_ALIAS
     __dbs__: ClassVar[Databases] = db
 
-    query: ClassVar[QueryDescriptor[Query[Any]]] = QueryDescriptor(Query)
+    # Not annotated: a model's `query = UserQuery.as_descriptor()` would take
+    # the declared type and read as `Query[User]`.
+    query = QueryDescriptor(Query)
 
     db: ClassVar[DatabaseDescriptor[Database]] = DatabaseDescriptor()
 
